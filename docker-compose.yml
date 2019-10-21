@@ -1,0 +1,23 @@
+version: '3.4'
+
+services:
+  atom:
+    image: atom
+    build: .
+    env_file:
+      - atom.env
+    depends_on:
+      - postgres
+    command: bash -c "
+        /wait-for-it.sh postgres:5432 -- diesel migration run
+        && /app/atom syncserver
+      "
+    restart: always
+
+  postgres:
+    image: postgres
+    env_file:
+      - atom.env
+    volumes:
+      - ./atom-postgres:/var/lib/postgresql/data
+    restart: always
