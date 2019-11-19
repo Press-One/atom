@@ -62,7 +62,6 @@ table! {
         block_num -> Int8,
         data_type -> Varchar,
         data -> Varchar,
-        status -> Varchar,
         created_at -> Timestamp,
         updated_at -> Nullable<Timestamp>,
         trx_id -> Varchar,

@@ -201,7 +201,7 @@ fn main() {
 
 pub fn synctxdata(connection: &PgConnection) {
     let mut p: Pip2001 = Pip2001::new();
-    let trxs_result = db::get_confirmed_trxs(&connection);
+    let trxs_result = db::get_trxs(&connection);
     match trxs_result {
         Ok(trxs) => {
             for trx in trxs {
@@ -249,7 +249,7 @@ pub fn synctxdata(connection: &PgConnection) {
             }
         }
         Err(e) => {
-            error!("get_confirmed_trxs failed: {:?}", e);
+            error!("get_trxs failed: {:?}", e);
         }
     }
 }
@@ -276,7 +276,7 @@ fn sync_blocks(conn: &PgConnection, start_block_num: i64) {
                 }
             } else {
                 if block_type == db::models::BlockType::DATA && !block.has_topic(&topics) {
-                    // confirm block 没有 topic 字段
+                    // 没有 topic 字段, skip
                     info!(
                         "block_num = {} not contains by topics = {:?}, skip ...",
                         block.block_num, topics

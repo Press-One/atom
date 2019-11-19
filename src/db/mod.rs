@@ -13,7 +13,7 @@ pub mod models;
 pub mod schema;
 use super::eos;
 
-use self::models::{Block, BlockType, NewBlock, TrxStatus};
+use self::models::{Block, BlockType, NewBlock};
 use self::models::{Content, NewContent};
 use self::models::{LastStatus, NewLastStatus};
 use self::models::{NewNotify, Notify, NotifyPartial};
@@ -197,10 +197,7 @@ pub fn get_last_status(
 pub fn get_max_tx_num(conn: &PgConnection) -> Result<i32, diesel::result::Error> {
     use schema::transactions::dsl::*;
 
-    let result = transactions
-        .filter(status.eq(models::TrxStatus::CONFIRMED.to_string()))
-        .order(id.desc())
-        .first::<Trx>(conn);
+    let result = transactions.order(id.desc()).first::<Trx>(conn);
     match result {
         Ok(tx) => {
             let tx_max_num = tx.id;
@@ -256,7 +253,6 @@ pub fn save_trx(
         block_num,
         data_type: &action_data._type,
         data,
-        status: &TrxStatus::SUBMITTED.to_string(),
         created_at: Utc::now().naive_utc(),
         updated_at: None,
         trx_id,
@@ -280,12 +276,10 @@ pub fn save_trx(
     trx
 }
 
-pub fn get_confirmed_trxs(conn: &PgConnection) -> Result<Vec<Trx>, diesel::result::Error> {
+pub fn get_trxs(conn: &PgConnection) -> Result<Vec<Trx>, diesel::result::Error> {
     use schema::transactions::dsl::*;
 
-    transactions
-        .filter(status.eq(models::TrxStatus::CONFIRMED.to_string()))
-        .load::<Trx>(conn)
+    transactions.load::<Trx>(conn)
 }
 
 pub fn save_block(
@@ -327,42 +321,12 @@ pub fn save_block(
                     let trx_id = &trx.trx_id;
                     save_trx(conn, block_num, trx_id, data_type, &data_str)?;
                 }
-                eos::Pip2001Action::Validation(data) => {
-                    let inner_data: eos::Pip2001ActionValidationInnerData =
-                        serde_json::from_str(&data.data)
-                            .expect("can not loads validation action data");
-                    // FIXME: hardcode
-                    if inner_data.result == "VALID" && data.oracleservice == "prs.oracle" {
-                        let status = TrxStatus::CONFIRMED.to_string();
-                        update_trx_status(conn, &inner_data.trx_id, &status)?;
-                    }
-                }
+                _ => error!("unsupport trx action = {:?}", action),
             }
         }
     }
 
     block
-}
-
-pub fn update_trx_status(
-    conn: &PgConnection,
-    ref_trx_id: &str,
-    status: &str,
-) -> Result<Trx, diesel::result::Error> {
-    use schema::transactions;
-
-    let trx = diesel::update(transactions::table.filter(transactions::trx_id.eq(ref_trx_id)))
-        .set((
-            transactions::status.eq(status),
-            transactions::updated_at.eq(Utc::now().naive_utc()),
-        ))
-        .get_result::<Trx>(conn);
-    info!(
-        "update transactions set status = {} where trx_id = {}",
-        status, ref_trx_id
-    );
-
-    trx
 }
 
 pub fn get_block(conn: &PgConnection, block_id: &str) -> Result<Block, diesel::result::Error> {
@@ -384,12 +348,7 @@ pub fn get_block_type(block: &eos::Block) -> BlockType {
                         return BlockType::DATA;
                     }
                 }
-                eos::Pip2001Action::Validation(data) => {
-                    if data._type == "PIP:2001" {
-                        // FIXME: hardcode
-                        return BlockType::CONFIRM;
-                    }
-                }
+                _ => error!("unsupport pip2001 action = {:?}", action),
             }
         }
     }

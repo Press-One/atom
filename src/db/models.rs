@@ -107,22 +107,9 @@ pub struct NewLastStatus<'a> {
 pub enum BlockType {
     EMPTY,
     DATA,
-    CONFIRM,
 }
 
 impl fmt::Display for BlockType {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub enum TrxStatus {
-    SUBMITTED,
-    CONFIRMED,
-}
-
-impl fmt::Display for TrxStatus {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}", self)
     }
@@ -156,7 +143,6 @@ pub struct Trx {
     pub block_num: i64,
     pub data_type: String, // e.g.: "PIP:2001"
     pub data: String,
-    pub status: String,
     pub created_at: chrono::NaiveDateTime,
     pub updated_at: Option<chrono::NaiveDateTime>,
     pub trx_id: String,
@@ -237,7 +223,6 @@ pub struct NewTrx<'a> {
     pub block_num: i64,
     pub data_type: &'a str,
     pub data: &'a str,
-    pub status: &'a str,
     pub created_at: chrono::NaiveDateTime,
     pub updated_at: Option<chrono::NaiveDateTime>,
     pub trx_id: &'a str,
