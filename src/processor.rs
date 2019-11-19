@@ -58,7 +58,13 @@ pub fn process_pip2001_message<'a>(
             let url: &str;
             let uris = &pipobject.meta["uris"];
             match uris {
-                InputObject::String(_s) => panic!("uris should be a url list"),
+                InputObject::String(_s) => {
+                    error!(
+                        "uris should be a url list, tx_id = {}\npipobject = {:?}",
+                        tx_id, pipobject
+                    );
+                    return false;
+                }
                 InputObject::VecOfString(v) => {
                     url = &v[0];
                 }
@@ -219,7 +225,11 @@ pub fn generate_atom_xml(connection: &PgConnection) {
         let fpath = Path::new(&xml_output_dir).join(&topic);
         let mut file = match fs::File::create(&fpath) {
             Ok(file) => file,
-            Err(e) => panic!("create file failed: {}", e),
+            Err(e) => panic!(
+                "create file failed: {}, fpath = {}",
+                fpath.as_os_str().to_string_lossy(),
+                e
+            ),
         };
         file.write_all(atomstring.as_bytes())
             .expect("write all failed");

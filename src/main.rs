@@ -226,9 +226,19 @@ pub fn synctxdata(connection: &PgConnection) {
                             );
                         }
                         Ok(None) => {
-                            panic!("Pip2001.from_json return None");
+                            error!(
+                                "Pip2001.from_json return None\ntrx = {:?}\njson_post_str = {}",
+                                trx, json_post_str
+                            );
+                            continue;
                         }
-                        Err(e) => panic!("{:?}", e),
+                        Err(e) => {
+                            error!(
+                                "from_json failed: {:?}\ntrx = {:?}\njson_post_str = {}",
+                                e, trx, json_post_str
+                            );
+                            continue;
+                        }
                     }
                 } else {
                     error!(
