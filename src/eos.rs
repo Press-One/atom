@@ -1,5 +1,8 @@
 extern crate jobpool;
 
+use crate::impl2001_rs::pip::pip2001::Pip2001;
+use crate::impl2001_rs::pip::pip2001::Pip2001MessageType;
+use crate::impl2001_rs::pip::Pip;
 use curl::easy::{Easy, List};
 use dotenv::dotenv;
 use jobpool::JobPool;
@@ -120,15 +123,29 @@ impl Block {
             for action in &transaction.actions {
                 match &action {
                     Pip2001Action::Data(data) => {
-                        if self.get_topic_by_data_id(&data.id).is_some() {
-                            let payload = NotifyPayload {
-                                block: NotifyBlock {
-                                    data_id: data.id.clone(),
-                                    block_num: self.block_num,
-                                    trx_id: transaction.trx_id.clone(),
-                                },
-                            };
-                            v.push(payload);
+                        let mut p: Pip2001 = Pip2001::new();
+                        if let Ok(Some(pipobject)) = p.from_json(&data.data) {
+                            match pipobject.msg_type {
+                                Pip2001MessageType::PUBLISH => {
+                                    if self.get_topic_by_data_id(&data.id).is_some() {
+                                        let payload = NotifyPayload {
+                                            block: NotifyBlock {
+                                                data_id: data.id.clone(),
+                                                block_num: self.block_num,
+                                                trx_id: transaction.trx_id.clone(),
+                                            },
+                                        };
+                                        v.push(payload);
+                                    }
+                                }
+                                Pip2001MessageType::PUBLISH_MANAGEMENT => {
+                                    continue;
+                                }
+                                _ => {
+                                    warn!("unsupport action data = {:?}", &data.data);
+                                    continue;
+                                }
+                            }
                         }
                     }
                     Pip2001Action::Validation(_) => {
