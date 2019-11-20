@@ -130,14 +130,16 @@ fn main() {
                                 processor::fetchcontent(&db_conn);
                                 processor::generate_atom_xml(&db_conn);
                             }
-                        } else if let Ok(unnotified_list) = db::get_unnotified_list(&db_conn) {
+                        } else {
+                            error!("get max_tx_num failed");
+                        }
+
+                        if let Ok(unnotified_list) = db::get_unnotified_list(&db_conn) {
                             if !unnotified_list.is_empty() {
                                 synctxdata(&db_conn);
                                 processor::fetchcontent(&db_conn);
                                 processor::generate_atom_xml(&db_conn);
                             }
-                        } else {
-                            error!("get max_tx_num failed");
                         }
                     } else {
                         error!("get database connection failed");
