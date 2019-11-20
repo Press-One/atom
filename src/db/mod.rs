@@ -400,8 +400,6 @@ pub fn get_unnotified_list(
         WHERE
             notifies.success = 'f'
             and notifies.data_id = posts.publish_tx_id
-            and posts.fetched = 't'
-            and posts.verify = 't'
         "#;
     diesel::sql_query(sql).load::<NotifyPartial>(conn)
 }
