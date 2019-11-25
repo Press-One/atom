@@ -124,27 +124,49 @@ impl Block {
                 match &action {
                     Pip2001Action::Data(data) => {
                         let mut p: Pip2001 = Pip2001::new();
-                        if let Ok(Some(pipobject)) = p.from_json(&data.data) {
-                            match pipobject.msg_type {
-                                Pip2001MessageType::PUBLISH => {
-                                    if self.get_topic_by_data_id(&data.id).is_some() {
-                                        let payload = NotifyPayload {
-                                            block: NotifyBlock {
-                                                data_id: data.id.clone(),
-                                                block_num: self.block_num,
-                                                trx_id: transaction.trx_id.clone(),
-                                            },
-                                        };
-                                        v.push(payload);
+                        let json_post_str = &data.to_post_json_str();
+                        let post = p.from_json(&json_post_str);
+                        match post {
+                            Ok(Some(pipobject)) => {
+                                debug!(
+                                    "get_notify_payloads block_num = {}, msg_type = {:?}",
+                                    self.block_num, &pipobject.msg_type
+                                );
+                                match pipobject.msg_type {
+                                    Pip2001MessageType::PUBLISH => {
+                                        if self.get_topic_by_data_id(&data.id).is_some() {
+                                            let payload = NotifyPayload {
+                                                block: NotifyBlock {
+                                                    data_id: data.id.clone(),
+                                                    block_num: self.block_num,
+                                                    trx_id: transaction.trx_id.clone(),
+                                                },
+                                            };
+                                            v.push(payload);
+                                        } else {
+                                            warn!("can not get_topic_by_data_id, block_num = {}, action data = {:?}", self.block_num, &data);
+                                        }
+                                    }
+                                    Pip2001MessageType::PUBLISH_MANAGEMENT => {
+                                        continue;
+                                    }
+                                    _ => {
+                                        warn!("unsupport action data = {:?}", &data.data);
+                                        continue;
                                     }
                                 }
-                                Pip2001MessageType::PUBLISH_MANAGEMENT => {
-                                    continue;
-                                }
-                                _ => {
-                                    warn!("unsupport action data = {:?}", &data.data);
-                                    continue;
-                                }
+                            }
+                            Ok(None) => {
+                                error!(
+                                    "from_json return None, block_num = {}, action data = {:?}",
+                                    self.block_num, &data
+                                );
+                            }
+                            Err(e) => {
+                                warn!(
+                                    "from_json failed: {}, block_num = {}, action data = {:?}",
+                                    e, self.block_num, &data
+                                );
                             }
                         }
                     }
@@ -177,6 +199,48 @@ pub struct Pip2001ActionValidationInnerData {
 }
 
 impl Pip2001ActionData {
+    pub fn to_post_json_str(&self) -> String {
+        let mut result: HashMap<String, String> = HashMap::new();
+        let meta: Value = serde_json::from_str(&self.meta).expect("parse action data.meta failed");
+        let inner_data: Value =
+            serde_json::from_str(&self.data).expect("parse action inner data failed");
+
+        if !inner_data["file_hash"].is_null() {
+            if let Value::String(_v) = &inner_data["file_hash"] {
+                result.insert(String::from("file_hash"), _v.clone());
+            }
+        }
+
+        if !inner_data["topic"].is_null() {
+            if let Value::String(_v) = &inner_data["topic"] {
+                result.insert(String::from("topic"), _v.clone());
+            }
+        }
+
+        if !inner_data["allow"].is_null() {
+            if let Value::String(_v) = &inner_data["allow"] {
+                result.insert(String::from("allow"), _v.clone());
+            }
+        }
+
+        if !inner_data["deny"].is_null() {
+            if let Value::String(_v) = &inner_data["deny"] {
+                result.insert(String::from("deny"), _v.clone());
+            }
+        }
+
+        if !meta["uris"].is_null() {
+            if let Value::Array(_v) = &meta["uris"] {
+                result.insert(
+                    String::from("uris"),
+                    serde_json::to_string(_v).expect("meta.uris to json str failed"),
+                );
+            }
+        }
+
+        serde_json::to_string(&result).expect("json dumps action post json failed")
+    }
+
     pub fn get_encryption(&self) -> String {
         let v: Value = serde_json::from_str(&self.meta).expect("parse meta failed");
         if !v["encryption"].is_null() {

@@ -348,7 +348,10 @@ pub fn get_block_type(block: &eos::Block) -> BlockType {
                         return BlockType::DATA;
                     }
                 }
-                _ => error!("unsupport pip2001 action = {:?}", action),
+                _ => error!(
+                    "block_num = {} unsupport pip2001 action = {:?}",
+                    block.block_num, action
+                ),
             }
         }
     }
