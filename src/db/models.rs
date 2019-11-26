@@ -201,7 +201,9 @@ impl Trx {
         let result = qs::json_to_qs(&data.data);
         match result {
             Ok(_s) => {
-                let _s_hash = utility::keccak256(&_s).ok().unwrap();
+                let _s_hash = utility::keccak256(&_s)
+                    .ok()
+                    .expect(&format!("utility::keccak256 failed, _s = {}", &_s));
                 if _s_hash == data.hash {
                     let result = utility::recover_user_pubaddress(&data.signature, &_s_hash);
                     match result {

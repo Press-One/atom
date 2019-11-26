@@ -148,8 +148,7 @@ fn main() {
                 }
             });
 
-            // _handle.join().unwrap();
-            handle_tx.join().unwrap();
+            handle_tx.join().expect("handle_tx.join failed");
         }
         "atom" => {
             let db_conn_pool = db::establish_connection_pool();
@@ -192,7 +191,7 @@ fn main() {
             .bind(&bind_address)
             .unwrap_or_else(|_| panic!("can not bind to {}", &bind_address))
             .run()
-            .unwrap();
+            .expect("HttpServer::new failed");
         }
         _ => {
             println!("{}", usage);
@@ -258,7 +257,9 @@ pub fn synctxdata(connection: &PgConnection) {
 
 fn sync_blocks(conn: &PgConnection, start_block_num: i64) {
     let env_thread_num = env::var("THREAD_NUM").expect("THREAD_NUM must be set");
-    let thread_num: u32 = env_thread_num.parse::<u32>().unwrap();
+    let thread_num: u32 = env_thread_num
+        .parse::<u32>()
+        .expect("env_thread_num.parse failed");
     let topics_map = util::get_topics();
     let topics: Vec<String> = topics_map.iter().map(|(topic, _)| topic.clone()).collect();
     let blocksbatch = eos::BlockIteratorBatch::new(thread_num, start_block_num);

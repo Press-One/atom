@@ -289,11 +289,12 @@ impl Iterator for BlockIteratorBatch {
                 );
                 match result {
                     Ok(eos_block) => {
-                        tx.send(Some(eos_block)).unwrap();
+                        let err_msg = format!("tx.send failed, eos_block = {:?}", &eos_block);
+                        tx.send(Some(eos_block)).expect(&err_msg);
                     }
                     Err(e) => {
                         error!("get_block failed: {}", e);
-                        tx.send(None).unwrap();
+                        tx.send(None).expect("tx.send None failed");
                     }
                 }
             });
@@ -509,12 +510,17 @@ pub fn get_block(easy: &mut Easy, block_num: i64) -> Result<Block, Box<dyn Error
 pub fn notify_webhook(payload: &NotifyPayload, url: &str) -> (u32, String) {
     debug!("notify webhook url = {}", url);
     let mut easy = get_curl_easy().expect("get curl easy failed");
-    easy.url(&url).unwrap();
+    easy.url(&url)
+        .expect(&format!("easy.url failed, url = {}", url));
     let mut headers = List::new();
     headers.append("Content-Type: application/json").unwrap();
-    easy.http_headers(headers).unwrap();
+    let err_msg = format!("easy.http_headers failed, headers = {:?}", &headers);
+    easy.http_headers(headers).expect(&err_msg);
     easy.post(true).unwrap();
-    let payload = serde_json::to_string(&payload).unwrap();
+    let payload = serde_json::to_string(&payload).expect(&format!(
+        "serde_json::to_string failed, payload = {:?}",
+        payload
+    ));
     debug!(
         "curl -X POST -H 'Content-Type: application/json' -d '{}' {}",
         payload, url
@@ -527,16 +533,16 @@ pub fn notify_webhook(payload: &NotifyPayload, url: &str) -> (u32, String) {
         let mut transfer = easy.transfer();
         transfer
             .read_function(|buf| Ok(payload_bytes.read(buf).unwrap_or(0)))
-            .unwrap();
+            .expect("transfer.read_function failed");
         transfer
             .write_function(|data| {
                 response_content.extend_from_slice(data);
                 Ok(data.len())
             })
-            .unwrap();
-        transfer.perform().unwrap();
+            .expect("transfer.write_function failed");
+        transfer.perform().expect("transfer.perform failed");
     }
-    let status_code = easy.response_code().unwrap();
+    let status_code = easy.response_code().expect("easy.response_code failed");
     let msg = String::from_utf8_lossy(&response_content);
     (status_code, msg.to_string())
 }

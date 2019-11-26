@@ -32,9 +32,21 @@ pub fn parse(mdtext: &str) -> MarkdownAttrs {
         }
     }
     MarkdownAttrs {
-        title: frontmatter_fields.get("title").unwrap().to_string(),
-        author: frontmatter_fields.get("author").unwrap().to_string(),
-        avatar: frontmatter_fields.get("avatar").unwrap().to_string(),
-        published: frontmatter_fields.get("published").unwrap().to_string(),
+        title: frontmatter_fields
+            .get("title")
+            .expect("frontmatter_fields.get title failed")
+            .to_string(),
+        author: frontmatter_fields
+            .get("author")
+            .expect("frontmatter_fields.get author failed")
+            .to_string(),
+        avatar: frontmatter_fields
+            .get("avatar")
+            .expect("frontmatter_fields.get avatar failed")
+            .to_string(),
+        published: frontmatter_fields
+            .get("published")
+            .expect("frontmatter_fields.get published failed")
+            .to_string(),
     }
 }

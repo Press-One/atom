@@ -173,7 +173,8 @@ pub fn fetchcontent(connection: &PgConnection) {
 
 pub fn fetch_markdown(url: String) -> std::result::Result<String, String> {
     let mut easy = eos::get_curl_easy().expect("get curl easy failed");
-    easy.url(&url).unwrap();
+    easy.url(&url)
+        .expect(&format!("easy.url failed, url = {}", url));
     let _redirect = easy.follow_location(true);
     let mut data = Vec::new();
     {
@@ -183,8 +184,8 @@ pub fn fetch_markdown(url: String) -> std::result::Result<String, String> {
                 data.extend_from_slice(new_data);
                 Ok(new_data.len())
             })
-            .unwrap();
-        transfer.perform().unwrap();
+            .expect("transfer.write_function failed");
+        transfer.perform().expect("transfer.perform");
     };
 
     let html = String::from_utf8(data).expect("body is not valid UTF8!");
@@ -206,7 +207,10 @@ fn decrypt_aes_256_cbc(session: &str, content: &str) -> Result<String, String> {
     let encryption_key = env::var("ENCRYPTION_KEY").expect("ENCRYPTION_KEY must be set");
     let iv_prefix = env::var("IV_PREFIX").expect("IV_PREFIX must be set");
     let hashiv = crypto_util::get_iv(&iv_prefix, session);
-    let key = hex::decode(&encryption_key).unwrap();
+    let key = hex::decode(&encryption_key).expect(&format!(
+        "hex::decode failed, encryption_key = {}",
+        encryption_key
+    ));
 
     crypto_util::decrypt_aes_256_cbc(String::from(content), &key, hashiv)
 }
@@ -286,7 +290,7 @@ pub fn atom(connection: &PgConnection, topic: &str) -> String {
     let mut feed = Feed::default();
     feed.set_entries(entries);
 
-    feed.write_to(sink()).unwrap();
+    feed.write_to(sink()).expect("feed.write_to failed");
     feed.to_string()
 }
 
