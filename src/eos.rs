@@ -79,8 +79,20 @@ impl Block {
             for action in &transaction.actions {
                 if let Pip2001Action::Data(data) = &action {
                     let data_id = String::from(&data.id);
-                    let inner_data: Value =
-                        serde_json::from_str(&data.data).expect("parse inner data failed");
+                    let inner_data: Value;
+                    let inner_data_res = serde_json::from_str(&data.data);
+                    match inner_data_res {
+                        Ok(_inner_data) => {
+                            inner_data = _inner_data;
+                        }
+                        Err(e) => {
+                            error!(
+                                "parse action inner data failed, block_num = {} error = {} data = {}",
+                                self.block_num, e, &data.data
+                            );
+                            continue;
+                        }
+                    }
                     if inner_data["topic"].is_null() {
                         continue;
                     }
