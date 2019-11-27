@@ -246,6 +246,7 @@ pub fn synctxdata(connection: &PgConnection) {
                         "block_num = {} trx_id = {}, verify failed",
                         trx.block_num, trx.trx_id
                     );
+                    continue;
                 }
             }
         }

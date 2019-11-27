@@ -112,7 +112,10 @@ pub fn fetchcontent(connection: &PgConnection) {
                             match dec_html_result {
                                 Ok(dec_html) => html = dec_html,
                                 Err(e) => {
-                                    error!("decrypt enc post failed: {:?}", e);
+                                    error!(
+                                        "decrypt enc post file_hash = {} failed: {:?}",
+                                        post.file_hash, e
+                                    );
                                     continue;
                                 }
                             }
@@ -184,8 +187,10 @@ pub fn fetch_markdown(url: String) -> std::result::Result<String, String> {
                 data.extend_from_slice(new_data);
                 Ok(new_data.len())
             })
-            .expect("transfer.write_function failed");
-        transfer.perform().expect("transfer.perform");
+            .expect(&format!("transfer.write_function failed, url = {}", url));
+        transfer
+            .perform()
+            .expect(&format!("transfer.perform failed, url = {}", url));
     };
 
     let html = String::from_utf8(data).expect("body is not valid UTF8!");
@@ -195,7 +200,7 @@ pub fn fetch_markdown(url: String) -> std::result::Result<String, String> {
             if respcode == 200 {
                 Ok(html)
             } else {
-                Err(format!("error status code: {:?}", respcode))
+                Err(format!("url = {} error status code: {:?}", url, respcode))
             }
         }
         Err(e) => Err(e.to_string()),
