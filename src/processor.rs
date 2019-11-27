@@ -1,4 +1,3 @@
-extern crate crypto;
 extern crate impl2001_rs;
 
 use chrono::prelude::Utc;
@@ -10,12 +9,11 @@ use std::path::Path;
 
 use dotenv::dotenv;
 
-use self::crypto::digest::Digest;
-use self::crypto::sha3::Sha3;
 use crate::crypto_util;
 use crate::impl2001_rs::pip::pip2001::Pip2001;
 use crate::impl2001_rs::pip::pip2001::Pip2001MessageType;
 use crate::impl2001_rs::pip::InputObject;
+use crate::prs_utility_rust::utility;
 use atom_syndication::{Feed, Generator, Person};
 
 use crate::db;
@@ -42,10 +40,9 @@ pub fn process_pip2001_message<'a>(
                 users_action = "deny";
                 users_list = &pipobject.data["deny"];
             }
-            debug!("user_action = {:?}", users_action);
             let now = Utc::now().naive_utc();
             for user_pubaddr in users_list.split(',') {
-                debug!("user = {}", user_pubaddr);
+                debug!("user = {} user_action = {:?}", user_pubaddr, users_action);
                 db::save_user(&conn, &user_pubaddr, &users_action, &tx_id, now)
                     .expect("save user failed");
                 db::update_last_status(&conn, "tx_num", trx_table_num)
@@ -71,6 +68,7 @@ pub fn process_pip2001_message<'a>(
             }
 
             let now = Utc::now().naive_utc();
+            // FIXME: update_by_tx_id is empty string?
             let update_by_tx_id = "";
             let _post = db::save_post(
                 &conn,
@@ -84,12 +82,17 @@ pub fn process_pip2001_message<'a>(
                 now,
             )
             .expect("save post failed");
-            debug!("saved post.encryption = {}", _post.encryption);
+            debug!(
+                "post saved, file_hash = {} encryption = {}",
+                _post.file_hash, _post.encryption
+            );
 
-            db::update_last_status(&conn, "tx_num", trx_table_num)
-                .expect("update last_tx_num failed");
+            db::update_last_status(&conn, "tx_num", trx_table_num).expect(&format!(
+                "update last_tx_num failed, tx_num = {}",
+                trx_table_num
+            ));
         }
-        Pip2001MessageType::NA => println!("NA"),
+        Pip2001MessageType::NA => warn!("Pip2001MessageType is NA"),
     }
     true
 }
@@ -122,9 +125,9 @@ pub fn fetchcontent(connection: &PgConnection) {
                         } else {
                             html = data;
                         }
-                        let mut hasher = Sha3::keccak256();
-                        hasher.input_str(&html);
-                        let hex = hasher.result_str();
+                        let hex = utility::keccak256(&html)
+                            .ok()
+                            .expect(&format!("utility::keccak256 failed, html = {}", &html));
                         // just check and output error message
                         if hex != post.file_hash {
                             error!(
@@ -199,7 +202,7 @@ pub fn fetch_markdown(url: String) -> std::result::Result<String, String> {
                 Err(format!("url = {} error status code: {:?}", url, respcode))
             }
         }
-        Err(e) => Err(e.to_string()),
+        Err(e) => Err(format!("url = {} error = {}", url, e)),
     }
 }
 
@@ -304,7 +307,10 @@ pub fn check_and_send_webhook(conn: &PgConnection, data_id: &str) {
                 notify.data_id, notify.topic, notify.success
             );
             if notify.success {
-                debug!("notify webhook success already, skip ...");
+                debug!(
+                    "block_num = {} trx_id = {} notify webhook success already, skip ...",
+                    notify.block_num, notify.trx_id
+                );
                 return;
             }
             let payload = eos::NotifyPayload {

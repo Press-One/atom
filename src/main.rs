@@ -1,5 +1,4 @@
 use std::process;
-extern crate crypto;
 extern crate curl;
 extern crate env_logger;
 #[macro_use]
@@ -41,7 +40,7 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     let command: &str;
 
-    let usage = format!("usage: {} <fetch|syncserver|atom|web>", &args[0]);
+    let usage = format!("usage: {} <fetch|syncserver|atom>", &args[0]);
     if args.len() <= 1 {
         println!("{}", usage);
         process::exit(0);
@@ -157,41 +156,6 @@ fn main() {
             } else {
                 error!("get database connection failed");
             }
-        }
-        "web" => {
-            use actix_cors::Cors;
-            use actix_web::{web, App, HttpRequest, HttpServer, Responder};
-
-            dotenv().ok();
-            let bind_address = env::var("BIND_ADDRESS").expect("BIND_ADDRESS must be set");
-            fn output_xml(req: HttpRequest) -> impl Responder {
-                let topic = req.match_info().get("topic").expect("can not get topic");
-                let db_conn_pool = db::establish_connection_pool();
-                if let Ok(db_conn) = db_conn_pool.get() {
-                    processor::atom(&db_conn, &topic)
-                } else {
-                    let msg = "get database connection failed";
-                    error!("{}", msg);
-                    String::from(msg)
-                }
-            }
-
-            HttpServer::new(|| {
-                App::new()
-                    .wrap(
-                        Cors::new()
-                            .allowed_origin("http://localhost:4008")
-                            .allowed_origin("https://box-posts.press.one")
-                            .allowed_origin("https://xue-posts.press.one")
-                            .allowed_origin("https://box-posts.xue.cn")
-                            .allowed_origin("https://xue-posts.xue.cn"),
-                    )
-                    .route("/output/{topic}", web::get().to(output_xml))
-            })
-            .bind(&bind_address)
-            .unwrap_or_else(|_| panic!("can not bind to {}", &bind_address))
-            .run()
-            .expect("HttpServer::new failed");
         }
         _ => {
             println!("{}", usage);
