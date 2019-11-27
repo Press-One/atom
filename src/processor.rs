@@ -125,43 +125,39 @@ pub fn fetchcontent(connection: &PgConnection) {
                         let mut hasher = Sha3::keccak256();
                         hasher.input_str(&html);
                         let hex = hasher.result_str();
-                        if hex == post.file_hash {
-                            let content = db::get_content(connection, &post.file_hash);
-                            match content {
-                                Ok(_) => {
-                                    debug!(
-                                        "content already exists, file_hash = {}",
-                                        &post.file_hash
-                                    );
-                                }
-                                Err(e) => {
-                                    if e == diesel::NotFound {
-                                        if let Err(e) = db::save_content(
-                                            connection,
-                                            &post.file_hash,
-                                            &post.url,
-                                            &html,
-                                        ) {
-                                            error!(
-                                                "save_content file_hash = {} url = {} failed: {:?}",
-                                                &post.file_hash, &post.url, e
-                                            );
-                                            continue;
-                                        }
-                                    } else {
-                                        error!("get_content failed: {}", e);
+                        // just check and output error message
+                        if hex != post.file_hash {
+                            error!(
+                                "hex != file_hash, hex = {} file_hash = {} url = {}",
+                                hex, post.file_hash, post.url
+                            );
+                        }
+                        let content = db::get_content(connection, &post.file_hash);
+                        match content {
+                            Ok(_) => {
+                                debug!("content already exists, file_hash = {}", &post.file_hash);
+                            }
+                            Err(e) => {
+                                if e == diesel::NotFound {
+                                    if let Err(e) = db::save_content(
+                                        connection,
+                                        &post.file_hash,
+                                        &post.url,
+                                        &html,
+                                    ) {
+                                        error!(
+                                            "save_content file_hash = {} url = {} failed: {:?}",
+                                            &post.file_hash, &post.url, e
+                                        );
+                                        continue;
                                     }
+                                } else {
+                                    error!("get_content failed: {}", e);
                                 }
                             }
-                            db::update_post_status(connection, &post.file_hash, true, true)
-                                .expect("update_post_status failed");
-                        } else {
-                            error!(
-                                "hex != file_hash, hex = {} file_hash = {}",
-                                hex, post.file_hash
-                            );
-                            continue;
                         }
+                        db::update_post_status(connection, &post.file_hash, true, true)
+                            .expect("update_post_status failed");
                     }
                     Err(e) => {
                         error!("fetch_markdown {} failed: {:?}", &post.url, e);
