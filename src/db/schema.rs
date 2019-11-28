@@ -53,6 +53,7 @@ table! {
         fetched -> Bool,
         verify -> Bool,
         encryption -> Varchar,
+        hash_alg -> Varchar,
     }
 }
 

@@ -51,6 +51,7 @@ pub fn process_pip2001_message<'a>(
         }
         Pip2001MessageType::PUBLISH => {
             let file_hash = &pipobject.data["file_hash"];
+            let hash_alg = &pipobject.data["hash_alg"];
             let topic = &pipobject.data["topic"];
             let url: &str;
             let uris = &pipobject.meta["uris"];
@@ -76,6 +77,7 @@ pub fn process_pip2001_message<'a>(
                 &user_pubaddr,
                 &update_by_tx_id,
                 &file_hash,
+                &hash_alg,
                 &topic,
                 &url,
                 encryption,
@@ -125,14 +127,17 @@ pub fn fetchcontent(connection: &PgConnection) {
                         } else {
                             html = data;
                         }
-                        let hex = utility::keccak256(&html)
+                        let hex = utility::hash_text(&html, &post.hash_alg)
                             .ok()
-                            .expect(&format!("utility::keccak256 failed, html = {}", &html));
+                            .expect(&format!(
+                                "utility::hash_text failed, hash_alg = {} html = {}",
+                                &post.hash_alg, &html
+                            ));
                         // just check and output error message
                         if hex != post.file_hash {
                             error!(
-                                "hex != file_hash, hex = {} file_hash = {} url = {}",
-                                hex, post.file_hash, post.url
+                                "hex != file_hash, hash_alg = {} hex = {} file_hash = {} url = {}",
+                                &post.hash_alg, hex, post.file_hash, post.url
                             );
                         }
                         let content = db::get_content(connection, &post.file_hash);

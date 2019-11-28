@@ -72,6 +72,7 @@ pub fn save_post<'a>(
     user_address: &'a str,
     update_by_tx_id: &'a str,
     file_hash: &'a str,
+    hash_alg: &'a str,
     topic: &'a str,
     url: &'a str,
     encryption: &str,
@@ -87,6 +88,7 @@ pub fn save_post<'a>(
         topic,
         url,
         encryption,
+        hash_alg,
         updated_at,
     };
 

@@ -11,7 +11,6 @@ extern crate qs_rs;
 extern crate sentry;
 
 use diesel::pg::PgConnection;
-use dotenv::dotenv;
 use std::env;
 use std::thread;
 use std::time::Duration;
