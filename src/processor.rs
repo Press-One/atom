@@ -3,6 +3,7 @@ extern crate impl2001_rs;
 use chrono::prelude::Utc;
 use diesel::pg::PgConnection;
 use std::env;
+use std::error::Error;
 use std::fs;
 use std::io::{sink, Write};
 use std::path::Path;
@@ -178,23 +179,18 @@ pub fn fetchcontent(connection: &PgConnection) {
     }
 }
 
-pub fn fetch_markdown(url: String) -> std::result::Result<String, String> {
-    let mut easy = eos::get_curl_easy().expect("get curl easy failed");
-    easy.url(&url)
-        .expect(&format!("easy.url failed, url = {}", url));
+pub fn fetch_markdown(url: String) -> std::result::Result<String, Box<dyn Error>> {
+    let mut easy = eos::get_curl_easy()?;
+    easy.url(&url)?;
     let _redirect = easy.follow_location(true);
     let mut data = Vec::new();
     {
         let mut transfer = easy.transfer();
-        transfer
-            .write_function(|new_data| {
-                data.extend_from_slice(new_data);
-                Ok(new_data.len())
-            })
-            .expect(&format!("transfer.write_function failed, url = {}", url));
-        transfer
-            .perform()
-            .expect(&format!("transfer.perform failed, url = {}", url));
+        transfer.write_function(|new_data| {
+            data.extend_from_slice(new_data);
+            Ok(new_data.len())
+        })?;
+        transfer.perform()?;
     };
 
     let html = String::from_utf8(data).expect("body is not valid UTF8!");
@@ -204,10 +200,13 @@ pub fn fetch_markdown(url: String) -> std::result::Result<String, String> {
             if respcode == 200 {
                 Ok(html)
             } else {
-                Err(format!("url = {} error status code: {:?}", url, respcode))
+                Err(From::from(format!(
+                    "url = {} error status code: {:?}",
+                    url, respcode,
+                )))
             }
         }
-        Err(e) => Err(format!("url = {} error = {}", url, e)),
+        Err(e) => Err(From::from(format!("url = {} error = {}", url, e))),
     }
 }
 
