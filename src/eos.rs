@@ -221,6 +221,14 @@ impl Pip2001ActionData {
             if let Value::String(_v) = &inner_data["file_hash"] {
                 result.insert(String::from("file_hash"), _v.clone());
             }
+
+            // the default value is `keccak256`
+            result.insert(String::from("hash_alg"), String::from("keccak256"));
+            if !inner_data["alg"].is_null() {
+                if let Value::String(_v) = &inner_data["alg"] {
+                    *result.get_mut("hash_alg").unwrap() = _v.clone();
+                }
+            }
         }
 
         if !inner_data["topic"].is_null() {
