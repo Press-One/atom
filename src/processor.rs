@@ -43,7 +43,10 @@ pub fn process_pip2001_message<'a>(
             }
             let now = Utc::now().naive_utc();
             for user_pubaddr in users_list.split(',') {
-                debug!("user = {} user_action = {:?}", user_pubaddr, users_action);
+                debug!(
+                    "tx_id = {} user = {} user_action = {:?}",
+                    tx_id, user_pubaddr, users_action
+                );
                 db::save_user(&conn, &user_pubaddr, &users_action, &tx_id, now)
                     .expect("save user failed");
                 db::update_last_status(&conn, "tx_num", trx_table_num)

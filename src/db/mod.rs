@@ -281,7 +281,7 @@ pub fn save_trx(
 pub fn get_trxs(conn: &PgConnection) -> Result<Vec<Trx>, diesel::result::Error> {
     use schema::transactions::dsl::*;
 
-    transactions.load::<Trx>(conn)
+    transactions.order(block_num.asc()).load::<Trx>(conn)
 }
 
 pub fn save_block(
