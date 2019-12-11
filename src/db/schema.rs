@@ -69,6 +69,7 @@ table! {
         signature -> Varchar,
         hash -> Varchar,
         user_address -> Varchar,
+        processed -> Bool,
     }
 }
 

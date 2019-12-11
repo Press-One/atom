@@ -132,12 +132,6 @@ pub fn get_posts(
         .load::<Post>(conn)
 }
 
-pub fn get_all_posts(conn: &PgConnection) -> Result<Vec<Post>, diesel::result::Error> {
-    use schema::posts::dsl::*;
-
-    posts.load::<Post>(conn)
-}
-
 pub fn get_allow_posts(
     conn: &PgConnection,
     topic: &str,
@@ -278,10 +272,36 @@ pub fn save_trx(
     trx
 }
 
-pub fn get_trxs(conn: &PgConnection) -> Result<Vec<Trx>, diesel::result::Error> {
+pub fn get_trxs(
+    conn: &PgConnection,
+    is_processed: bool,
+) -> Result<Vec<Trx>, diesel::result::Error> {
     use schema::transactions::dsl::*;
 
-    transactions.order(block_num.asc()).load::<Trx>(conn)
+    transactions
+        .filter(processed.eq(is_processed))
+        .order(block_num.asc())
+        .load::<Trx>(conn)
+}
+
+pub fn update_trx_status(
+    conn: &PgConnection,
+    _block_num: i64,
+    _processed: bool,
+) -> Result<usize, diesel::result::Error> {
+    use schema::transactions::dsl::*;
+
+    let result = diesel::update(transactions.filter(block_num.eq(_block_num)))
+        .set((
+            processed.eq(_processed),
+            updated_at.eq(Utc::now().naive_utc()),
+        ))
+        .execute(conn);
+    debug!(
+        "update transaction set processed = {} where block_num = {}",
+        _processed, _block_num
+    );
+    result
 }
 
 pub fn save_block(

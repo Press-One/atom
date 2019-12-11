@@ -151,6 +151,7 @@ pub struct Trx {
     pub signature: String,
     pub hash: String,
     pub user_address: String,
+    pub processed: bool,
 }
 
 impl Trx {

@@ -165,7 +165,7 @@ fn main() {
 
 pub fn synctxdata(connection: &PgConnection) {
     let mut p: Pip2001 = Pip2001::new();
-    let trxs_result = db::get_trxs(&connection);
+    let trxs_result = db::get_trxs(&connection, false);
     match trxs_result {
         Ok(trxs) => {
             for trx in trxs {
@@ -188,6 +188,12 @@ pub fn synctxdata(connection: &PgConnection) {
                                 i64::from(trx.id),
                                 &encryption,
                             );
+                            if let Err(e) = db::update_trx_status(connection, trx.block_num, true) {
+                                error!(
+                                    "update_trx_status failed: {}, block_num = {} processed = true",
+                                    e, trx.block_num
+                                );
+                            }
                         }
                         Ok(None) => {
                             error!(
