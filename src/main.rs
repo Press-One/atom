@@ -96,7 +96,7 @@ fn main() {
                     } else {
                         error!("get database connection failed");
                     }
-                    thread::sleep(Duration::from_millis(100));
+                    thread::sleep(Duration::from_millis(1000));
                 }
             });
 
