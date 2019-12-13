@@ -80,7 +80,7 @@ fn main() {
                             match info_result {
                                 Ok(info) => {
                                     let last_irreversible_block_num =
-                                        info.data.last_irreversible_block_num;
+                                        info.last_irreversible_block_num;
                                     info!("last block number {:?}", last_irreversible_block_num);
                                     if last_irreversible_block_num > start_block_num {
                                         debug!("find new blocks!");

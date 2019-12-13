@@ -18,25 +18,9 @@ use std::time::Duration;
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ChainInfo {
     pub errors: Option<String>,
-    pub data: ChainInfoData,
     pub success: bool,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct ChainInfoData {
-    pub server_version: String,
-    pub chain_id: String,
     pub head_block_num: i64,
     pub last_irreversible_block_num: i64,
-    pub last_irreversible_block_id: String,
-    pub head_block_id: String,
-    head_block_time: String,
-    head_block_producer: String,
-    virtual_block_cpu_limit: String,
-    virtual_block_net_limit: u64,
-    block_cpu_limit: u64,
-    block_net_limit: u64,
-    server_version_string: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -386,7 +370,6 @@ pub fn get_curl_easy() -> Result<Easy, Box<dyn Error>> {
     Ok(easy)
 }
 
-#[allow(dead_code)]
 pub fn get_info(easy: &mut Easy) -> Result<ChainInfo, Box<dyn Error>> {
     let url = get_base_url();
     debug!("get chain url = {}", url);
@@ -400,8 +383,57 @@ pub fn get_info(easy: &mut Easy) -> Result<ChainInfo, Box<dyn Error>> {
         })?;
         transfer.perform()?;
     };
-    let info = serde_json::from_slice(&response_content)?;
-    Ok(info)
+
+    let res: Value = serde_json::from_slice(&response_content)?;
+
+    // check if response success
+    if let Value::Bool(success) = &res["success"] {
+        if !success {
+            let response_text = String::from_utf8_lossy(&response_content);
+            error!("get chain info: {}", response_text);
+            return Err(From::from(response_text));
+        }
+        let errors: Option<String>;
+        let mut head_block_num: i64 = 0;
+        let mut last_irreversible_block_num: i64 = 0;
+
+        if let Value::String(_v) = &res["errors"] {
+            errors = Some(_v.clone());
+        } else {
+            errors = None;
+        }
+
+        if !res["data"].is_null() {
+            let data = &res["data"];
+            if let Value::Number(_v) = &data["head_block_num"] {
+                if let Some(_vv) = _v.as_i64() {
+                    head_block_num = _vv;
+                }
+            }
+            if let Value::Number(_v) = &data["last_irreversible_block_num"] {
+                if let Some(_vv) = _v.as_i64() {
+                    last_irreversible_block_num = _vv;
+                }
+            }
+
+            if head_block_num == 0 || last_irreversible_block_num == 0 {
+                return Err(From::from(format!(
+                    "invalid block num, head_block_num = {} last_irreversible_block_num = {}",
+                    head_block_num, last_irreversible_block_num
+                )));
+            }
+
+            let info = ChainInfo {
+                errors,
+                success: *success,
+                head_block_num,
+                last_irreversible_block_num,
+            };
+            return Ok(info);
+        }
+    }
+
+    Err(From::from(String::from_utf8_lossy(&response_content)))
 }
 
 pub fn get_block(easy: &mut Easy, block_num: i64) -> Result<Block, Box<dyn Error>> {
