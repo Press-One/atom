@@ -11,6 +11,7 @@ extern crate qs_rs;
 extern crate sentry;
 
 use diesel::pg::PgConnection;
+use dotenv::dotenv;
 use std::env;
 use std::thread;
 use std::time::Duration;
@@ -19,6 +20,7 @@ mod crypto_util;
 pub mod db;
 mod eos;
 mod frontmatter;
+mod handlers;
 mod processor;
 mod util;
 
@@ -155,6 +157,29 @@ fn main() {
             } else {
                 error!("get database connection failed");
             }
+        }
+        "web" => {
+            use actix_web::{web, App, HttpServer};
+
+            dotenv().ok();
+            let bind_address = env::var("BIND_ADDRESS").expect("BIND_ADDRESS must be set");
+
+            HttpServer::new(move || {
+                App::new()
+                    .data(db::establish_connection_pool())
+                    .service(web::resource("/users").route(web::get().to(handlers::users::list)))
+                    .service(web::resource("/blocks").route(web::get().to(handlers::blocks::list)))
+                    .service(
+                        web::resource("/posts").route(web::get().to(handlers::posts::list_all_asc)),
+                    )
+                    .service(
+                        web::resource("/atom").route(web::get().to(handlers::posts::list_latest)),
+                    )
+            })
+            .bind(&bind_address)
+            .unwrap_or_else(|_| panic!("can not bind to {}", &bind_address))
+            .run()
+            .expect("HttpServer::new failed");
         }
         _ => {
             println!("{}", usage);

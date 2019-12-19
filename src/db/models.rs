@@ -19,7 +19,13 @@ use super::schema::posts;
 use super::schema::transactions;
 use super::schema::users;
 
-#[derive(Queryable)]
+#[derive(Serialize, Deserialize)]
+pub struct UserList(pub Vec<User>);
+
+#[derive(Serialize, Deserialize)]
+pub struct BlockList(pub Vec<Block>);
+
+#[derive(Queryable, Serialize, Deserialize, Debug, Clone)]
 pub struct User {
     pub user_address: String,
     pub status: String,
@@ -117,7 +123,7 @@ impl fmt::Display for BlockType {
     }
 }
 
-#[derive(Queryable, Debug)]
+#[derive(Queryable, Debug, Serialize, Deserialize)]
 pub struct Block {
     pub id: i32,
     pub block_id: String,

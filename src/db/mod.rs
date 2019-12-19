@@ -13,13 +13,13 @@ pub mod models;
 pub mod schema;
 use super::eos;
 
-use self::models::{Block, BlockType, NewBlock};
+use self::models::{Block, BlockList, BlockType, NewBlock};
 use self::models::{Content, NewContent};
 use self::models::{LastStatus, NewLastStatus};
 use self::models::{NewNotify, Notify, NotifyPartial};
 use self::models::{NewPost, Post, PostPartial};
 use self::models::{NewTrx, Trx};
-use self::models::{NewUser, User};
+use self::models::{NewUser, User, UserList};
 
 pub type PgPool = Pool<ConnectionManager<PgConnection>>;
 pub type PgPooledConnection = PooledConnection<ConnectionManager<PgConnection>>;
@@ -144,8 +144,56 @@ pub fn get_allow_posts(
         AND topic = '{}'
         AND posts.fetched = 't'
         AND posts.verify = 't'
-        AND users.status = 'allow'"#,
+        AND users.status = 'allow'
+        "#,
         topic
+    );
+    diesel::sql_query(sql).load::<PostPartial>(conn)
+}
+
+pub fn get_all_posts_by_page(
+    conn: &PgConnection,
+    topic: &str,
+    offset: i64,
+    limit: i64,
+) -> Result<Vec<PostPartial>, diesel::result::Error> {
+    let sql = format!(
+        r#"
+        SELECT posts.publish_tx_id, posts.file_hash, posts.topic
+        FROM posts, users
+        WHERE posts.user_address = users.user_address
+        AND topic = '{}'
+        AND posts.fetched = 't'
+        AND posts.verify = 't'
+        ORDER BY posts.updated_at asc
+        OFFSET {}
+        LIMIT {}
+        "#,
+        topic, offset, limit
+    );
+    diesel::sql_query(sql).load::<PostPartial>(conn)
+}
+
+pub fn get_latest_posts_by_page(
+    conn: &PgConnection,
+    topic: &str,
+    offset: i64,
+    limit: i64,
+) -> Result<Vec<PostPartial>, diesel::result::Error> {
+    let sql = format!(
+        r#"
+        SELECT posts.publish_tx_id, posts.file_hash, posts.topic
+        FROM posts, users
+        WHERE posts.user_address = users.user_address
+        AND topic = '{}'
+        AND posts.fetched = 't'
+        AND posts.verify = 't'
+        AND users.status = 'allow'
+        ORDER BY posts.updated_at desc
+        OFFSET {}
+        LIMIT {}
+        "#,
+        topic, offset, limit
     );
     diesel::sql_query(sql).load::<PostPartial>(conn)
 }
@@ -460,4 +508,41 @@ pub fn update_notify_status(
     );
 
     notify
+}
+
+impl UserList {
+    pub fn list(conn: &PgConnection, offset: i64, limit: i64) -> Self {
+        use schema::users::dsl::*;
+
+        let result = users
+            .order(updated_at.asc())
+            .limit(limit)
+            .offset(offset)
+            .load::<User>(conn)
+            .expect("loading users failed");
+
+        let res = result
+            .into_iter()
+            .map(|mut v| {
+                v.status = v.status.trim().to_string();
+                v
+            })
+            .collect();
+        UserList(res)
+    }
+}
+
+impl BlockList {
+    pub fn list(conn: &PgConnection, offset: i64, limit: i64) -> Self {
+        use schema::blocks::dsl::*;
+
+        let result = blocks
+            .order(block_num.asc())
+            .limit(limit)
+            .offset(offset)
+            .load::<Block>(conn)
+            .expect("loading users failed");
+
+        BlockList(result)
+    }
 }

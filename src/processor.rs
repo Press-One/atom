@@ -18,6 +18,7 @@ use crate::prs_utility_rust::utility;
 use atom_syndication::{Feed, Generator, Person};
 
 use crate::db;
+use crate::db::models::PostPartial;
 use crate::eos;
 use crate::frontmatter;
 use crate::util;
@@ -235,23 +236,29 @@ pub fn generate_atom_xml(connection: &PgConnection) {
     for item in topics_map {
         let topic = item.0;
         debug!("generate atom for topic = {}", topic);
-        let atomstring = atom(&connection, &topic);
+        let posts_result = db::get_allow_posts(&connection, &topic);
+        match posts_result {
+            Ok(posts) => {
+                let atomstring = atom(&connection, posts);
 
-        let fpath = Path::new(&xml_output_dir).join(&topic);
-        let mut file = match fs::File::create(&fpath) {
-            Ok(file) => file,
-            Err(e) => panic!(
-                "create file failed: {}, fpath = {}",
-                fpath.as_os_str().to_string_lossy(),
-                e
-            ),
-        };
-        file.write_all(atomstring.as_bytes())
-            .expect("write all failed");
+                let fpath = Path::new(&xml_output_dir).join(&topic);
+                let mut file = match fs::File::create(&fpath) {
+                    Ok(file) => file,
+                    Err(e) => panic!(
+                        "create file failed: {}, fpath = {}",
+                        fpath.as_os_str().to_string_lossy(),
+                        e
+                    ),
+                };
+                file.write_all(atomstring.as_bytes())
+                    .expect("write all failed");
+            }
+            Err(e) => error!("get_allow_posts failed: {}", e),
+        }
     }
 }
 
-pub fn atom(connection: &PgConnection, topic: &str) -> String {
+pub fn atom(connection: &PgConnection, posts: Vec<PostPartial>) -> String {
     use atom_syndication::Content;
     use atom_syndication::Entry;
 
@@ -261,41 +268,36 @@ pub fn atom(connection: &PgConnection, topic: &str) -> String {
     let mut feed = Feed::default();
     feed.set_generator(generator);
     let mut entries = Vec::new();
-    let posts_result = db::get_allow_posts(connection, topic);
-    match posts_result {
-        Ok(posts) => {
-            for post in posts {
-                debug!("generate atom for post file_hash = {} ", post.file_hash);
-                let result_content = db::get_content(connection, &post.file_hash);
-                match result_content {
-                    Ok(post_content) => {
-                        let markdown_attrs = frontmatter::parse(&post_content.content);
-                        debug!(
-                            "post content title = {} author = {} published = {}",
-                            markdown_attrs.title, markdown_attrs.author, markdown_attrs.published
-                        );
-                        let mut feed_content = Content::default();
-                        feed_content.set_content_type("text/markdown".to_string());
-                        feed_content.set_value(format!("<![CDATA[{}]]>", post_content.content));
 
-                        let mut person = Person::default();
-                        person.set_name(&markdown_attrs.author);
-                        let mut entry = Entry::default();
+    for post in posts {
+        debug!("generate atom for post file_hash = {} ", post.file_hash);
+        let result_content = db::get_content(connection, &post.file_hash);
+        match result_content {
+            Ok(post_content) => {
+                let markdown_attrs = frontmatter::parse(&post_content.content);
+                debug!(
+                    "post content title = {} author = {} published = {}",
+                    markdown_attrs.title, markdown_attrs.author, markdown_attrs.published
+                );
+                let mut feed_content = Content::default();
+                feed_content.set_content_type("text/markdown".to_string());
+                feed_content.set_value(format!("<![CDATA[{}]]>", post_content.content));
 
-                        entry.set_id(&post.publish_tx_id);
-                        entry.set_title(&markdown_attrs.title);
-                        entry.set_published(markdown_attrs.published);
-                        entry.set_authors(vec![person]);
-                        entry.set_content(feed_content);
-                        entries.push(entry);
-                        // check and send webhook notify
-                        check_and_send_webhook(connection, &post.publish_tx_id);
-                    }
-                    Err(e) => error!("get content failed: {:?}", e),
-                }
+                let mut person = Person::default();
+                person.set_name(&markdown_attrs.author);
+                let mut entry = Entry::default();
+
+                entry.set_id(&post.publish_tx_id);
+                entry.set_title(&markdown_attrs.title);
+                entry.set_published(markdown_attrs.published);
+                entry.set_authors(vec![person]);
+                entry.set_content(feed_content);
+                entries.push(entry);
+                // check and send webhook notify
+                check_and_send_webhook(connection, &post.publish_tx_id);
             }
+            Err(e) => error!("get content failed: {:?}", e),
         }
-        Err(e) => error!("get posts failed: {:?}", e),
     }
 
     let mut feed = Feed::default();
