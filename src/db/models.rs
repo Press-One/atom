@@ -31,6 +31,7 @@ pub struct User {
     pub status: String,
     pub tx_id: String,
     pub updated_at: chrono::NaiveDateTime,
+    pub topic: String,
 }
 
 #[derive(Insertable, AsChangeset)]
@@ -40,6 +41,7 @@ pub struct NewUser<'a> {
     pub status: &'a str,
     pub tx_id: &'a str,
     pub updated_at: chrono::NaiveDateTime,
+    pub topic: &'a str,
 }
 
 #[derive(Queryable)]

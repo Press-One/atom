@@ -79,6 +79,7 @@ table! {
         status -> Bpchar,
         tx_id -> Bpchar,
         updated_at -> Timestamp,
+        topic -> Varchar,
     }
 }
 

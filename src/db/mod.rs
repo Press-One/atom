@@ -45,6 +45,7 @@ pub fn save_user<'a>(
     user_address: &'a str,
     status: &'a str,
     tx_id: &'a str,
+    topic: &'a str,
     updated_at: chrono::NaiveDateTime,
 ) -> Result<User, diesel::result::Error> {
     use schema::users;
@@ -54,6 +55,7 @@ pub fn save_user<'a>(
         status,
         tx_id,
         updated_at,
+        topic,
     };
 
     diesel::insert_into(users::table)
@@ -62,7 +64,6 @@ pub fn save_user<'a>(
         .do_update()
         .set(&new_user)
         .get_result(conn)
-    //.expect("Error update users") //TODO: stop? log? set status to warning?
 }
 
 #[cfg_attr(feature = "cargo-clippy", allow(clippy::too_many_arguments))]
@@ -141,7 +142,7 @@ pub fn get_allow_posts(
         SELECT posts.publish_tx_id, posts.file_hash, posts.topic
         FROM posts, users
         WHERE posts.user_address = users.user_address
-        AND topic = '{}'
+        AND posts.topic = '{}'
         AND posts.fetched = 't'
         AND posts.verify = 't'
         AND users.status = 'allow'
@@ -162,7 +163,7 @@ pub fn get_all_posts_by_page(
         SELECT posts.publish_tx_id, posts.file_hash, posts.topic
         FROM posts, users
         WHERE posts.user_address = users.user_address
-        AND topic = '{}'
+        AND posts.topic = '{}'
         AND posts.fetched = 't'
         AND posts.verify = 't'
         ORDER BY posts.updated_at asc
@@ -185,7 +186,7 @@ pub fn get_latest_posts_by_page(
         SELECT posts.publish_tx_id, posts.file_hash, posts.topic
         FROM posts, users
         WHERE posts.user_address = users.user_address
-        AND topic = '{}'
+        AND posts.topic = '{}'
         AND posts.fetched = 't'
         AND posts.verify = 't'
         AND users.status = 'allow'
@@ -511,10 +512,11 @@ pub fn update_notify_status(
 }
 
 impl UserList {
-    pub fn list(conn: &PgConnection, offset: i64, limit: i64) -> Self {
+    pub fn list(conn: &PgConnection, _topic: &str, offset: i64, limit: i64) -> Self {
         use schema::users::dsl::*;
 
         let result = users
+            .filter(topic.eq(_topic))
             .order(updated_at.asc())
             .limit(limit)
             .offset(offset)

@@ -35,6 +35,7 @@ pub fn process_pip2001_message<'a>(
         Pip2001MessageType::PUBLISH_MANAGEMENT => {
             let mut users_action = "";
             let mut users_list = "";
+            let mut topic = "";
             if pipobject.data.contains_key("allow") {
                 users_action = "allow";
                 users_list = &pipobject.data["allow"];
@@ -42,13 +43,21 @@ pub fn process_pip2001_message<'a>(
                 users_action = "deny";
                 users_list = &pipobject.data["deny"];
             }
+            if pipobject.data.contains_key("topic") {
+                topic = &pipobject.data["topic"];
+            } else {
+                error!(
+                    "can not find topic key from pipobject.data = {:?}",
+                    &pipobject.data
+                );
+            }
             let now = Utc::now().naive_utc();
             for user_pubaddr in users_list.split(',') {
                 debug!(
                     "tx_id = {} user = {} user_action = {:?}",
                     tx_id, user_pubaddr, users_action
                 );
-                db::save_user(&conn, &user_pubaddr, &users_action, &tx_id, now)
+                db::save_user(&conn, &user_pubaddr, &users_action, &tx_id, &topic, now)
                     .expect("save user failed");
                 db::update_last_status(&conn, "tx_num", trx_table_num)
                     .expect("update last_tx_num failed");
