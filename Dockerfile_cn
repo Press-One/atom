@@ -1,0 +1,28 @@
+FROM rust:latest as builder
+WORKDIR /usr/src/app
+COPY . .
+RUN echo "[source.crates-io]" > /usr/local/cargo/config \
+    && echo 'registry = "https://github.com/rust-lang/crates.io-index"' >> /usr/local/cargo/config \
+    && echo "replace-with = 'ustc'" >> /usr/local/cargo/config \
+    && echo "[source.ustc]" >> /usr/local/cargo/config \
+    && echo 'registry = "git://mirrors.ustc.edu.cn/crates.io-index"' >> /usr/local/cargo/config
+
+RUN cargo build -j4 --release
+RUN cargo install -j4 diesel_cli --no-default-features --features postgres
+
+ADD https://baseone-dev.pek3b.qingstor.com/static/wait-for-it.sh /wait-for-it.sh
+# Add Tini
+ADD https://baseone-dev.pek3b.qingstor.com/static/tini-static /tini
+RUN chmod +x /tini /wait-for-it.sh
+
+FROM rust:latest
+COPY --from=builder \
+    /usr/src/app/target/release/atom /app/atom
+COPY --from=builder /usr/src/app/migrations /app/migrations
+COPY --from=builder /tini /tini
+COPY --from=builder /wait-for-it.sh /wait-for-it.sh
+COPY --from=builder /usr/local/cargo/bin/diesel /usr/local/cargo/bin/diesel
+ENTRYPOINT ["/tini", "--"]
+
+WORKDIR /app
+CMD ["/app/atom", "syncserver"]

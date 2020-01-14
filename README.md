@@ -5,25 +5,32 @@
 #### 准备 `atom.env`
 
 ```
-RUST_LOG=debug
-POSTGRES_PASSWORD=YOUR-POSTGRES-PASSWORD
+POSTGRES_PASSWORD=<YOUR-POSTGRES-PASSWORD>
 POSTGRES_DB=atom
-DATABASE_URL=postgresql://postgres:YOUR-POSTGRES-PASSWORD@postgres/atom
+RUST_LOG=debug
+RUST_BACKTRACE=full
+DATABASE_URL=postgresql://postgres:<YOUR-POSTGRES-PASSWORD>@postgres/atom
 EOS_BASE_URL=https://prs-bp-dev.press.one/api/chain
-TOPIC=YOUR-TOPIC-ADDRESS-1;YOUR-NOTIFY-URL-1\ YOUR-TOPIC-ADDRESS-2;YOUR-NOTIFY-URL-2
-BIND_ADDRESS=0.0.0.0:8080
-ENCRYPTION_KEY=YOUR-ENCRYPTION-KEY
-IV_PREFIX=YOUR-IV-PREFIX
-XML_OUTPUT_DIR=/app/output
+TOPIC=<YOUR-TOPIC-ADDRESS>;<YOUR-WEBHOOK-URL>
+BIND_PORT=7070
+BIND_ADDRESS=0.0.0.0:7070
+ENCRYPTION_KEY=<YOUR-ENCRYPTION-KEY>
+IV_PREFIX=<YOUR-IV-PREFIX>
 THREAD_NUM=3
 ```
 
-注：`POSTGRES_PASSWORD`、`DATABASE_URL`、`TOPIC`、`ENCRYPTION_KEY`、`IV_PREFIX`、`XML_OUTPUT_DIR` 需要根据自己的情况修改
+注：`POSTGRES_PASSWORD`、`DATABASE_URL`、`TOPIC`、`ENCRYPTION_KEY`、`IV_PREFIX` 需要根据自己的情况修改
 
 #### build docker image
 
 ```
-docker-compose build
+docker build -f Dockerfile -t atom
+```
+
+国内用户使用下面的命令：
+
+```
+docker build -f Dockerfile_cn -t atom
 ```
 
 #### 运行
@@ -74,7 +81,7 @@ cargo build --release -j4
 
 需要先设置环境变量，程序会通过下面的环境变量获取 `配置信息`
 
-请参考上面的 `atom.env`
+请参考上面的 `.env`
 
 也可以使用 [direnv](https://direnv.net/) 管理环境变量，使用方法自己参考官方文档。
 
@@ -104,14 +111,8 @@ cargo run syncserver <block_num>
 cargo run syncserver 22270
 ```
 
-### 抓文章内容，保存到contents表
+### 启动 web server
 
 ```
-cargo run fetch
-```
-
-### 生成 <topic>.xml
-
-```
-cargo run atom
+cargo run web
 ```

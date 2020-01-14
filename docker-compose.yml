@@ -1,11 +1,10 @@
-version: '3.4'
+version: '3.3'
 
 services:
   atom:
-    image: atom
-    build: .
+    image: pressone/atom
     env_file:
-      - atom.env
+      - .env
     depends_on:
       - postgres
     command: bash -c "
@@ -14,10 +13,24 @@ services:
       "
     restart: always
 
+  web:
+    image: pressone/atom
+    env_file:
+      - .env
+    depends_on:
+      - postgres
+    command: bash -c "
+        /wait-for-it.sh postgres:5432 -- diesel migration run
+        && /app/atom web
+      "
+    ports:
+      - ${BIND_PORT}:${BIND_PORT}
+    restart: always
+
   postgres:
     image: postgres
     env_file:
-      - atom.env
+      - .env
     volumes:
       - ./atom-postgres:/var/lib/postgresql/data
     restart: always
