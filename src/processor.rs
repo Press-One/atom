@@ -18,7 +18,7 @@ use crate::prs_utility_rust::utility;
 use atom_syndication::{Feed, Generator, Person};
 
 use crate::db;
-use crate::db::models::PostPartial;
+use crate::db::models::{Post, PostPartial};
 use crate::eos;
 use crate::frontmatter;
 use crate::util;
@@ -83,13 +83,16 @@ pub fn process_pip2001_message<'a>(
             }
 
             let now = Utc::now().naive_utc();
-            // FIXME: update_by_tx_id is empty string?
-            let update_by_tx_id = "";
+            // save updated_tx_id
+            let mut updated_tx_id = "";
+            if let Some(v) = pipobject.data.get("updated_tx_id") {
+                updated_tx_id = v;
+            }
             let _post = db::save_post(
                 &conn,
                 &tx_id,
                 &user_pubaddr,
-                &update_by_tx_id,
+                &updated_tx_id,
                 &file_hash,
                 &hash_alg,
                 &topic,
@@ -110,6 +113,63 @@ pub fn process_pip2001_message<'a>(
         }
         Pip2001MessageType::NA => warn!("Pip2001MessageType is NA"),
     }
+    true
+}
+
+pub fn process_post_updated(connection: &PgConnection, post: &Post) -> bool {
+    // 被更新的 publish_tx_id
+    let updated_publish_tx_id = post.updated_tx_id.trim();
+
+    if updated_publish_tx_id.len() == 0 {
+        return true;
+    }
+
+    let updated_post_res = db::get_post_by_publish_tx_id(connection, &updated_publish_tx_id);
+    match updated_post_res {
+        Ok(updated_post) => {
+            debug!(
+                "process post updated, updated_publish_tx_id = {}",
+                updated_publish_tx_id
+            );
+
+            // check user_address of updated post
+            if updated_post.user_address != post.user_address {
+                error!(
+                    "update post failed, publish_tx_id: {}, updated user_address {} != post.user_address {}",
+                    &post.publish_tx_id, updated_post.user_address, post.user_address
+                );
+                return false;
+            } else {
+                // delete old content
+                debug!("delete content, file_hash = {}", updated_post.file_hash);
+                if let Err(e) = db::delete_content(connection, &updated_post.file_hash) {
+                    error!(
+                        "delete content failed, file_hash = {}, error = {}",
+                        updated_post.file_hash, e
+                    );
+                    return false;
+                }
+
+                // delete old post
+                debug!("delete post, file_hash = {}", updated_post.file_hash);
+                if let Err(e) = db::delete_post(connection, &updated_post.file_hash) {
+                    error!(
+                        "delete old content failed, file_hash = {}, error = {}",
+                        updated_post.file_hash, e
+                    );
+                    return false;
+                }
+            }
+        }
+        Err(e) => {
+            error!(
+                "get_post_by_publish_tx_id failed, updated_publish_tx_id = {}, error: {}",
+                updated_publish_tx_id, e
+            );
+            return false;
+        }
+    }
+
     true
 }
 
@@ -154,6 +214,7 @@ pub fn fetchcontent(connection: &PgConnection) {
                                 &post.hash_alg, hex, post.file_hash, post.url
                             );
                         }
+
                         let content = db::get_content(connection, &post.file_hash);
                         match content {
                             Ok(_) => {
@@ -178,8 +239,17 @@ pub fn fetchcontent(connection: &PgConnection) {
                                 }
                             }
                         }
+
                         db::update_post_status(connection, &post.file_hash, true, true)
                             .expect("update_post_status failed");
+
+                        if !process_post_updated(connection, &post) {
+                            error!(
+                                "post/content update failed, post.file_hash = {}, skip",
+                                post.file_hash
+                            );
+                            continue;
+                        }
                     }
                     Err(e) => {
                         error!("fetch_markdown {} failed: {:?}", &post.url, e);

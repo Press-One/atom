@@ -17,7 +17,7 @@ use self::models::{Block, BlockList, BlockType, NewBlock};
 use self::models::{Content, NewContent};
 use self::models::{LastStatus, NewLastStatus};
 use self::models::{NewNotify, Notify, NotifyPartial};
-use self::models::{NewPost, Post, PostPartial};
+use self::models::{NewPost, Post, PostJson, PostPartial};
 use self::models::{NewTrx, Trx};
 use self::models::{NewUser, User, UserList};
 
@@ -71,7 +71,7 @@ pub fn save_post<'a>(
     conn: &PgConnection,
     publish_tx_id: &'a str,
     user_address: &'a str,
-    update_by_tx_id: &'a str,
+    updated_tx_id: &'a str,
     file_hash: &'a str,
     hash_alg: &'a str,
     topic: &'a str,
@@ -84,7 +84,7 @@ pub fn save_post<'a>(
     let new_post = NewPost {
         publish_tx_id,
         user_address,
-        update_by_tx_id,
+        updated_tx_id,
         file_hash,
         topic,
         url,
@@ -121,6 +121,17 @@ pub fn save_content<'a>(
         .get_result(conn)
 }
 
+pub fn get_post_by_publish_tx_id(
+    conn: &PgConnection,
+    publish_tx_id: &str,
+) -> Result<Post, diesel::result::Error> {
+    use schema::posts;
+
+    posts::table
+        .filter(posts::publish_tx_id.eq(publish_tx_id))
+        .first::<Post>(conn)
+}
+
 pub fn get_posts(
     conn: &PgConnection,
     fetch_status: bool,
@@ -139,20 +150,45 @@ pub fn get_allow_posts(
 ) -> Result<Vec<PostPartial>, diesel::result::Error> {
     let sql = format!(
         r#"
-        SELECT posts.publish_tx_id, posts.file_hash, posts.topic
+        SELECT posts.publish_tx_id, posts.file_hash, posts.topic, posts.deleted
         FROM posts, users
         WHERE posts.user_address = users.user_address
         AND posts.topic = '{}'
+        AND posts.deleted = 'f'
         AND posts.fetched = 't'
         AND posts.verify = 't'
         AND users.status = 'allow'
+        ORDER BY posts.updated_at desc
         "#,
         topic
     );
     diesel::sql_query(sql).load::<PostPartial>(conn)
 }
 
-pub fn get_all_posts_by_page(
+pub fn get_posts_for_json(
+    conn: &PgConnection,
+    topic: &str,
+    offset: i64,
+    limit: i64,
+) -> Result<Vec<PostJson>, diesel::result::Error> {
+    let sql = format!(
+        r#"
+        SELECT posts.publish_tx_id, posts.file_hash, posts.topic, posts.updated_tx_id, posts.updated_at, posts.deleted
+        FROM posts, users
+        WHERE posts.user_address = users.user_address
+        AND posts.topic = '{}'
+        AND posts.fetched = 't'
+        AND posts.verify = 't'
+        ORDER BY posts.updated_at asc
+        OFFSET {}
+        LIMIT {}
+        "#,
+        topic, offset, limit
+    );
+    diesel::sql_query(sql).load::<PostJson>(conn)
+}
+
+pub fn get_all_atom_posts_by_asc(
     conn: &PgConnection,
     topic: &str,
     offset: i64,
@@ -160,7 +196,7 @@ pub fn get_all_posts_by_page(
 ) -> Result<Vec<PostPartial>, diesel::result::Error> {
     let sql = format!(
         r#"
-        SELECT posts.publish_tx_id, posts.file_hash, posts.topic
+        SELECT posts.publish_tx_id, posts.file_hash, posts.topic, posts.deleted
         FROM posts, users
         WHERE posts.user_address = users.user_address
         AND posts.topic = '{}'
@@ -183,12 +219,13 @@ pub fn get_latest_posts_by_page(
 ) -> Result<Vec<PostPartial>, diesel::result::Error> {
     let sql = format!(
         r#"
-        SELECT posts.publish_tx_id, posts.file_hash, posts.topic
+        SELECT posts.publish_tx_id, posts.file_hash, posts.topic, posts.deleted
         FROM posts, users
         WHERE posts.user_address = users.user_address
         AND posts.topic = '{}'
         AND posts.fetched = 't'
         AND posts.verify = 't'
+        AND posts.deleted = 'f'
         AND users.status = 'allow'
         ORDER BY posts.updated_at desc
         OFFSET {}
@@ -207,6 +244,28 @@ pub fn get_content<'a>(
     contents::table
         .find(file_hash)
         .first::<models::Content>(conn)
+}
+
+pub fn delete_content<'a>(
+    conn: &PgConnection,
+    _file_hash: &'a str,
+) -> Result<usize, diesel::result::Error> {
+    use schema::contents::dsl::*;
+
+    diesel::update(contents.filter(file_hash.eq(_file_hash)))
+        .set((deleted.eq(true), updated_at.eq(Utc::now().naive_utc())))
+        .execute(conn)
+}
+
+pub fn delete_post<'a>(
+    conn: &PgConnection,
+    _file_hash: &'a str,
+) -> Result<usize, diesel::result::Error> {
+    use schema::posts::dsl::*;
+
+    diesel::update(posts.filter(file_hash.eq(_file_hash)))
+        .set((deleted.eq(true), updated_at.eq(Utc::now().naive_utc())))
+        .execute(conn)
 }
 
 pub fn update_post_status<'a>(
@@ -319,6 +378,14 @@ pub fn save_trx(
     );
 
     trx
+}
+
+pub fn get_trx_by_trx_id(conn: &PgConnection, trx_id: &str) -> Result<Trx, diesel::result::Error> {
+    use schema::transactions;
+
+    transactions::table
+        .filter(transactions::trx_id.eq(trx_id))
+        .first::<Trx>(conn)
 }
 
 pub fn get_trxs(
@@ -474,6 +541,9 @@ pub fn get_unnotified_list(
         WHERE
             notifies.success = 'f'
             and notifies.data_id = posts.publish_tx_id
+            and posts.deleted = 'f'
+            and posts.fetched = 't'
+            and posts.verify = 't'
         "#;
     diesel::sql_query(sql).load::<NotifyPartial>(conn)
 }

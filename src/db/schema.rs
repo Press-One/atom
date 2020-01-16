@@ -16,6 +16,8 @@ table! {
         url -> Varchar,
         content -> Text,
         created_at -> Timestamp,
+        updated_at -> Timestamp,
+        deleted -> Bool,
     }
 }
 
@@ -48,12 +50,13 @@ table! {
         file_hash -> Bpchar,
         topic -> Bpchar,
         url -> Varchar,
-        update_by_tx_id -> Bpchar,
+        updated_tx_id -> Bpchar,
         updated_at -> Timestamp,
         fetched -> Bool,
         verify -> Bool,
         encryption -> Varchar,
         hash_alg -> Varchar,
+        deleted -> Bool,
     }
 }
 

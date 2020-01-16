@@ -215,6 +215,12 @@ impl Pip2001ActionData {
             }
         }
 
+        if !inner_data["updated_tx_id"].is_null() {
+            if let Value::String(_v) = &inner_data["updated_tx_id"] {
+                result.insert(String::from("updated_tx_id"), _v.clone());
+            }
+        }
+
         if !inner_data["topic"].is_null() {
             if let Value::String(_v) = &inner_data["topic"] {
                 result.insert(String::from("topic"), _v.clone());

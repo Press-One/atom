@@ -41,7 +41,7 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     let command: &str;
 
-    let usage = format!("usage: {} <fetch|syncserver|atom>", &args[0]);
+    let usage = format!("usage: {} <fetch|syncserver|processpost|atom>", &args[0]);
     if args.len() <= 1 {
         println!("{}", usage);
         process::exit(0);
@@ -128,18 +128,17 @@ fn main() {
                                 );
                                 synctxdata(&db_conn);
                                 processor::fetchcontent(&db_conn);
-                                processor::generate_atom_xml(&db_conn);
                             }
                         } else {
                             error!("get max_tx_num failed");
                         }
 
                         if let Ok(unnotified_list) = db::get_unnotified_list(&db_conn) {
-                            if !unnotified_list.is_empty() {
-                                synctxdata(&db_conn);
-                                processor::fetchcontent(&db_conn);
-                                processor::generate_atom_xml(&db_conn);
+                            for item in &unnotified_list {
+                                processor::check_and_send_webhook(&db_conn, &item.data_id);
                             }
+                        } else {
+                            error!("get_unnotified_list failed");
                         }
                     } else {
                         error!("get database connection failed");
@@ -150,6 +149,15 @@ fn main() {
 
             handle_tx.join().expect("handle_tx.join failed");
         }
+        "processpost" => {
+            let db_conn_pool = db::establish_connection_pool();
+            if let Ok(db_conn) = db_conn_pool.get() {
+                synctxdata(&db_conn);
+                processor::fetchcontent(&db_conn);
+            } else {
+                error!("get database connection failed");
+            }
+        }
         "atom" => {
             let db_conn_pool = db::establish_connection_pool();
             if let Ok(db_conn) = db_conn_pool.get() {
@@ -159,18 +167,24 @@ fn main() {
             }
         }
         "web" => {
-            use actix_web::{web, App, HttpServer};
+            use actix_web::{middleware, web, App, HttpServer};
 
             dotenv().ok();
             let bind_address = env::var("BIND_ADDRESS").expect("BIND_ADDRESS must be set");
 
             HttpServer::new(move || {
                 App::new()
+                    .wrap(middleware::Compress::default())
                     .data(db::establish_connection_pool())
                     .service(web::resource("/users").route(web::get().to(handlers::users::list)))
                     .service(web::resource("/blocks").route(web::get().to(handlers::blocks::list)))
                     .service(
-                        web::resource("/posts").route(web::get().to(handlers::posts::list_all_asc)),
+                        web::resource("/json_posts")
+                            .route(web::get().to(handlers::posts::list_all_asc)),
+                    )
+                    .service(
+                        web::resource("/posts")
+                            .route(web::get().to(handlers::posts::list_all_atom_by_asc)),
                     )
                     .service(
                         web::resource("/atom").route(web::get().to(handlers::posts::list_latest)),

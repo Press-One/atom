@@ -52,27 +52,40 @@ pub struct Post {
     pub file_hash: String,
     pub topic: String,
     pub url: String,
-    pub update_by_tx_id: String,
+    pub updated_tx_id: String,
     pub updated_at: chrono::NaiveDateTime,
     pub fetched: bool,
     pub verify: bool,
     pub encryption: String,
     pub hash_alg: String,
+    pub deleted: bool,
 }
 
-#[derive(Queryable, PartialEq, QueryableByName, Debug)]
+#[derive(Queryable, PartialEq, QueryableByName, Debug, Serialize)]
 #[table_name = "posts"]
 pub struct PostPartial {
     pub publish_tx_id: String,
     pub file_hash: String,
     pub topic: String,
+    pub deleted: bool,
+}
+
+#[derive(Queryable, PartialEq, QueryableByName, Debug, Serialize)]
+#[table_name = "posts"]
+pub struct PostJson {
+    pub publish_tx_id: String,
+    pub file_hash: String,
+    pub topic: String,
+    pub updated_tx_id: String,
+    pub updated_at: chrono::NaiveDateTime,
+    pub deleted: bool,
 }
 
 #[derive(Insertable, AsChangeset)]
 #[table_name = "posts"]
 pub struct NewPost<'a> {
     pub publish_tx_id: &'a str,
-    pub update_by_tx_id: &'a str,
+    pub updated_tx_id: &'a str,
     pub user_address: &'a str,
     pub file_hash: &'a str,
     pub topic: &'a str,
@@ -88,6 +101,8 @@ pub struct Content {
     pub url: String,
     pub content: String,
     pub created_at: chrono::NaiveDateTime,
+    pub updated_at: chrono::NaiveDateTime,
+    pub deleted: bool,
 }
 
 #[derive(Insertable, AsChangeset)]
@@ -163,6 +178,18 @@ pub struct Trx {
 }
 
 impl Trx {
+    pub fn get_file_hash(&self) -> Option<String> {
+        let data: eos::Pip2001ActionData =
+            serde_json::from_str(&self.data).expect("parse trx data failed");
+        let inner_data: Value = serde_json::from_str(&data.data).expect("parse inner data failed");
+        if !inner_data["file_hash"].is_null() {
+            if let Value::String(_v) = &inner_data["file_hash"] {
+                return Some(_v.clone());
+            }
+        }
+        None
+    }
+
     pub fn to_post_json_str(&self) -> String {
         let mut result: HashMap<String, String> = HashMap::new();
         let data: eos::Pip2001ActionData =
@@ -181,6 +208,12 @@ impl Trx {
                         *result.get_mut("hash_alg").unwrap() = _v.clone();
                     }
                 }
+            }
+        }
+
+        if !inner_data["updated_tx_id"].is_null() {
+            if let Value::String(_v) = &inner_data["updated_tx_id"] {
+                result.insert(String::from("updated_tx_id"), _v.clone());
             }
         }
 
