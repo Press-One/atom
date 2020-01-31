@@ -10,7 +10,7 @@ POSTGRES_DB=atom
 RUST_LOG=debug
 RUST_BACKTRACE=full
 DATABASE_URL=postgresql://postgres:<YOUR-POSTGRES-PASSWORD>@postgres/atom
-EOS_BASE_URL=https://prs-bp-dev.press.one/api/chain
+PRS_BASE_URL=https://prs-bp-dev.press.one/api/chain
 TOPIC=<YOUR-TOPIC-ADDRESS>;<YOUR-WEBHOOK-URL>
 BIND_PORT=7070
 BIND_ADDRESS=0.0.0.0:7070
@@ -19,7 +19,10 @@ IV_PREFIX=<YOUR-IV-PREFIX>
 THREAD_NUM=3
 ```
 
-注：`POSTGRES_PASSWORD`、`DATABASE_URL`、`TOPIC`、`ENCRYPTION_KEY`、`IV_PREFIX` 需要根据自己的情况修改
+注：
+
+- `POSTGRES_PASSWORD`、`DATABASE_URL`、`TOPIC`、`ENCRYPTION_KEY`、`IV_PREFIX` 需要根据自己的情况修改
+- `PRS_BASE_URL` 支持 `http://a[1-2].com`，它将会展开为 `http://a1.com` 、`http://a2.com`；请求时随机选择其中之一
 
 #### build docker image
 
