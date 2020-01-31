@@ -4,16 +4,16 @@ use crate::impl2001_rs::pip::pip2001::Pip2001;
 use crate::impl2001_rs::pip::pip2001::Pip2001MessageType;
 use crate::impl2001_rs::pip::Pip;
 use curl::easy::{Easy, List};
-use dotenv::dotenv;
 use jobpool::JobPool;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
-use std::env;
 use std::error::Error;
 use std::io::Read;
 use std::sync::mpsc;
 use std::time::Duration;
+
+use crate::url::URL;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ChainInfo {
@@ -357,16 +357,6 @@ pub struct EncPost {
     pub content: String,
 }
 
-fn get_base_url() -> String {
-    dotenv().ok();
-    env::var("EOS_BASE_URL").expect("get eos base url")
-}
-
-fn get_url(suffix: &str) -> String {
-    let base_url = get_base_url();
-    format!("{}{}", base_url, String::from(suffix))
-}
-
 pub fn get_curl_easy() -> Result<Easy, Box<dyn Error>> {
     // keep alive
     let mut easy = Easy::new();
@@ -377,7 +367,7 @@ pub fn get_curl_easy() -> Result<Easy, Box<dyn Error>> {
 }
 
 pub fn get_info(easy: &mut Easy) -> Result<ChainInfo, Box<dyn Error>> {
-    let url = get_base_url();
+    let url = URL::new().get_base_url();
     debug!("get chain url = {}", url);
     easy.url(&url)?;
     let mut response_content = Vec::new();
@@ -448,7 +438,7 @@ pub fn get_block(easy: &mut Easy, block_num: i64) -> Result<Block, Box<dyn Error
     let mut timestamp: String = String::from("");
     let mut trxs: Vec<Pip2001Trx> = Vec::new();
 
-    let url = get_url(&url_suffix);
+    let url = URL::new().get_url(&url_suffix);
     debug!("get block url = {}", url);
     easy.url(&url)?;
     let mut response_content = Vec::new();

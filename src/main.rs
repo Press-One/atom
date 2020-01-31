@@ -22,6 +22,7 @@ mod eos;
 mod frontmatter;
 mod handlers;
 mod processor;
+mod url;
 mod util;
 
 use crate::impl2001_rs::pip::pip2001::Pip2001;
