@@ -200,14 +200,6 @@ impl Trx {
         if !inner_data["file_hash"].is_null() {
             if let Value::String(_v) = &inner_data["file_hash"] {
                 result.insert(String::from("file_hash"), _v.clone());
-
-                // the default value is `keccak256`
-                result.insert(String::from("hash_alg"), String::from("keccak256"));
-                if !inner_data["alg"].is_null() {
-                    if let Value::String(_v) = &inner_data["alg"] {
-                        *result.get_mut("hash_alg").unwrap() = _v.clone();
-                    }
-                }
             }
         }
 
@@ -235,6 +227,16 @@ impl Trx {
             }
         }
 
+        if !meta["hash_alg"].is_null() {
+            if let Value::String(_v) = &meta["hash_alg"] {
+                result.insert(String::from("hash_alg"), _v.clone());
+            }
+        }
+        // the default value is `keccak256`
+        result
+            .entry(String::from("hash_alg"))
+            .or_insert(String::from("keccak256"));
+
         if !meta["uris"].is_null() {
             if let Value::Array(_v) = &meta["uris"] {
                 result.insert(
@@ -247,26 +249,33 @@ impl Trx {
         serde_json::to_string(&result).expect("json dumps post json failed")
     }
 
-    pub fn verify_signature(&self) -> bool {
-        let data: eos::Pip2001ActionData =
-            serde_json::from_str(&self.data).expect("parse trx data failed");
+    pub fn verify_signature(&self) -> Result<bool, Box<dyn std::error::Error>> {
+        let data: eos::Pip2001ActionData = serde_json::from_str(&self.data)?;
         let result = qs::json_to_qs(&data.data);
         match result {
             Ok(_s) => {
-                let _s_hash = utility::keccak256(&_s)
-                    .ok()
-                    .expect(&format!("utility::keccak256 failed, _s = {}", &_s));
+                let hash_alg = &data.get_hash_alg()?;
+                let _s_hash = if hash_alg == "keccak256" || hash_alg == "" {
+                    utility::keccak256(&_s)?
+                } else if hash_alg == "sha256" {
+                    utility::sha256(&_s)?
+                } else {
+                    let e: Box<dyn std::error::Error> =
+                        format!("data_id = {}, unsupport hash_alg = {}", data.id, hash_alg).into();
+                    return Err(e);
+                };
+
                 if _s_hash == data.hash {
                     let result = utility::recover_user_pubaddress(&data.signature, &_s_hash);
                     match result {
-                        Ok(_r) => _r == self.user_address,
-                        Err(_) => false,
+                        Ok(_r) => Ok(_r == self.user_address),
+                        Err(_) => Ok(false),
                     }
                 } else {
-                    false
+                    Ok(false)
                 }
             }
-            Err(_) => false,
+            Err(_) => Ok(false),
         }
     }
 }

@@ -209,8 +209,21 @@ pub fn synctxdata(connection: &PgConnection) {
     match trxs_result {
         Ok(trxs) => {
             for trx in trxs {
-                let verify = trx.verify_signature();
+                let verify = match trx.verify_signature() {
+                    Ok(v) => v,
+                    Err(e) => {
+                        error!(
+                            "block_num = {}, trx verify_signature failed: {}",
+                            trx.block_num, e
+                        );
+                        continue;
+                    }
+                };
                 if verify {
+                    debug!(
+                        "block_num = {}, trx_id = {} verify success",
+                        trx.block_num, trx.trx_id
+                    );
                     let json_post_str = trx.to_post_json_str();
                     let post = p.from_json(&json_post_str);
 

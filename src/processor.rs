@@ -411,11 +411,17 @@ pub fn check_and_send_webhook(conn: &PgConnection, data_id: &str) {
             let topics_map = util::get_topics();
             if let Some(notify_url) = topics_map.get(&notify.topic) {
                 debug!("send notify payload to {}", notify_url);
-                let (status_code, msg) = eos::notify_webhook(&payload, notify_url);
-                debug!("status_code = {} msg = {}", status_code, msg);
-                let success = status_code == 200;
-                db::update_notify_status(conn, &notify.data_id, success)
-                    .expect("update_notify_status failed");
+                match eos::notify_webhook(&payload, notify_url) {
+                    Ok(status_code) => {
+                        let success = status_code == 200;
+                        db::update_notify_status(conn, &notify.data_id, success)
+                            .expect("update_notify_status failed");
+                    }
+                    Err(e) => error!(
+                        "block_num = {}, url = {}, notify_webhook failed: {}",
+                        notify.block_num, notify_url, e
+                    ),
+                }
             } else {
                 error!("can not find webhook url for topic = {}", notify.topic);
             }

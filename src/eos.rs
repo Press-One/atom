@@ -120,7 +120,16 @@ impl Block {
                 match &action {
                     Pip2001Action::Data(data) => {
                         let mut p: Pip2001 = Pip2001::new();
-                        let json_post_str = &data.to_post_json_str();
+                        let json_post_str = match data.to_post_json_str() {
+                            Ok(v) => v,
+                            Err(e) => {
+                                error!(
+                                    "data_id = {}, data to_post_json_str failed: {}",
+                                    data.id, e
+                                );
+                                continue;
+                            }
+                        };
                         let post = p.from_json(&json_post_str);
                         match post {
                             Ok(Some(pipobject)) => {
@@ -195,23 +204,14 @@ pub struct Pip2001ActionValidationInnerData {
 }
 
 impl Pip2001ActionData {
-    pub fn to_post_json_str(&self) -> String {
+    pub fn to_post_json_str(&self) -> Result<String, Box<dyn std::error::Error>> {
         let mut result: HashMap<String, String> = HashMap::new();
-        let meta: Value = serde_json::from_str(&self.meta).expect("parse action data.meta failed");
-        let inner_data: Value =
-            serde_json::from_str(&self.data).expect("parse action inner data failed");
+        let meta: Value = serde_json::from_str(&self.meta)?;
+        let inner_data: Value = serde_json::from_str(&self.data)?;
 
         if !inner_data["file_hash"].is_null() {
             if let Value::String(_v) = &inner_data["file_hash"] {
                 result.insert(String::from("file_hash"), _v.clone());
-            }
-
-            // the default value is `keccak256`
-            result.insert(String::from("hash_alg"), String::from("keccak256"));
-            if !inner_data["alg"].is_null() {
-                if let Value::String(_v) = &inner_data["alg"] {
-                    *result.get_mut("hash_alg").unwrap() = _v.clone();
-                }
             }
         }
 
@@ -241,14 +241,21 @@ impl Pip2001ActionData {
 
         if !meta["uris"].is_null() {
             if let Value::Array(_v) = &meta["uris"] {
-                result.insert(
-                    String::from("uris"),
-                    serde_json::to_string(_v).expect("meta.uris to json str failed"),
-                );
+                result.insert(String::from("uris"), serde_json::to_string(_v)?);
             }
         }
 
-        serde_json::to_string(&result).expect("json dumps action post json failed")
+        if !meta["hash_alg"].is_null() {
+            if let Value::String(_v) = &meta["hash_alg"] {
+                result.insert(String::from("hash_alg"), _v.clone());
+            }
+        }
+        // the default value is `keccak256`
+        result
+            .entry(String::from("hash_alg"))
+            .or_insert(String::from("keccak256"));
+
+        Ok(serde_json::to_string(&result)?)
     }
 
     pub fn get_encryption(&self) -> String {
@@ -259,6 +266,16 @@ impl Pip2001ActionData {
             }
         }
         String::from("")
+    }
+
+    pub fn get_hash_alg(&self) -> Result<String, Box<dyn std::error::Error>> {
+        let v: Value = serde_json::from_str(&self.meta)?;
+        if !v["hash_alg"].is_null() {
+            if let Value::String(_v) = &v["hash_alg"] {
+                return Ok(_v.clone());
+            }
+        }
+        Ok("".to_string())
     }
 }
 
@@ -359,9 +376,10 @@ pub struct EncPost {
 
 pub fn get_curl_easy() -> Result<Easy, Box<dyn Error>> {
     // keep alive
+    let timeout = 30;
     let mut easy = Easy::new();
-    easy.connect_timeout(Duration::from_secs(10))?;
-    easy.timeout(Duration::from_secs(10))?;
+    easy.connect_timeout(Duration::from_secs(timeout))?;
+    easy.timeout(Duration::from_secs(timeout))?;
 
     Ok(easy)
 }
@@ -555,16 +573,19 @@ pub fn get_block(easy: &mut Easy, block_num: i64) -> Result<Block, Box<dyn Error
     })
 }
 
-pub fn notify_webhook(payload: &NotifyPayload, url: &str) -> (u32, String) {
+pub fn notify_webhook(
+    payload: &NotifyPayload,
+    url: &str,
+) -> Result<u32, Box<dyn std::error::Error>> {
     debug!("notify webhook url = {}", url);
     let mut easy = get_curl_easy().expect("get curl easy failed");
     easy.url(&url)
         .expect(&format!("easy.url failed, url = {}", url));
     let mut headers = List::new();
-    headers.append("Content-Type: application/json").unwrap();
+    headers.append("Content-Type: application/json")?;
     let err_msg = format!("easy.http_headers failed, headers = {:?}", &headers);
     easy.http_headers(headers).expect(&err_msg);
-    easy.post(true).unwrap();
+    easy.post(true)?;
     let payload = serde_json::to_string(&payload).expect(&format!(
         "serde_json::to_string failed, payload = {:?}",
         payload
@@ -574,23 +595,18 @@ pub fn notify_webhook(payload: &NotifyPayload, url: &str) -> (u32, String) {
         payload, url
     );
     let mut payload_bytes = payload.as_bytes();
-    easy.post_field_size(payload_bytes.len() as u64).unwrap();
+    easy.post_field_size(payload_bytes.len() as u64)?;
     let mut response_content = Vec::new();
 
     {
         let mut transfer = easy.transfer();
-        transfer
-            .read_function(|buf| Ok(payload_bytes.read(buf).unwrap_or(0)))
-            .expect("transfer.read_function failed");
-        transfer
-            .write_function(|data| {
-                response_content.extend_from_slice(data);
-                Ok(data.len())
-            })
-            .expect("transfer.write_function failed");
-        transfer.perform().expect("transfer.perform failed");
+        transfer.read_function(|buf| Ok(payload_bytes.read(buf).unwrap_or(0)))?;
+        transfer.write_function(|data| {
+            response_content.extend_from_slice(data);
+            Ok(data.len())
+        })?;
+        transfer.perform()?;
     }
-    let status_code = easy.response_code().expect("easy.response_code failed");
-    let msg = String::from_utf8_lossy(&response_content);
-    (status_code, msg.to_string())
+    let status_code = easy.response_code()?;
+    Ok(status_code)
 }
