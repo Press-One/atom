@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::env;
 use std::process;
+extern crate chrono;
+use chrono::{DateTime, SecondsFormat, Utc};
 
 use dotenv::dotenv;
 
@@ -22,4 +24,9 @@ pub fn get_topics() -> HashMap<String, String> {
         res.insert(String::from(pair[0]), String::from(pair[1]));
     }
     res
+}
+
+pub fn now_str() -> String {
+    let utc: DateTime<Utc> = Utc::now();
+    utc.to_rfc3339_opts(SecondsFormat::Millis, true)
 }

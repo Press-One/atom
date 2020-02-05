@@ -68,14 +68,18 @@ fn main() {
                             start_block_num = args[2]
                                 .parse()
                                 .expect("parse start_block_num from command line args failed");
-                        } else if let Ok(last_block_num) =
-                            db::get_last_status(&db_conn, "block_num")
-                        {
-                            start_block_num = last_block_num.val;
                         } else {
-                            error!("get last_block_num failed");
-                            thread::sleep(Duration::from_millis(1000));
-                            continue;
+                            if let Ok(last_block_num) = db::get_last_status(&db_conn, "block_num") {
+                                start_block_num = last_block_num.val;
+                            } else {
+                                match eos::get_start_block_num() {
+                                    Ok(v) => start_block_num = v as i64,
+                                    Err(e) => {
+                                        error!("get_start_block_num failed: {}", e);
+                                        continue;
+                                    }
+                                }
+                            }
                         }
 
                         if let Ok(mut easy) = eos::get_curl_easy() {

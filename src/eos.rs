@@ -14,6 +14,7 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 use crate::url::URL;
+use crate::util;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ChainInfo {
@@ -382,6 +383,58 @@ pub fn get_curl_easy() -> Result<Easy, Box<dyn Error>> {
     easy.timeout(Duration::from_secs(timeout))?;
 
     Ok(easy)
+}
+
+pub fn get_start_block_num() -> Result<u64, Box<dyn Error>> {
+    let timestamp = util::now_str();
+    let url_suffix = format!(
+        "/transactions?timestamp={}&type=PIP:2001&count=1",
+        timestamp
+    );
+    let url = URL::new().get_url(&url_suffix);
+    debug!("get_start_block_num from url: {}", url);
+
+    let mut easy = get_curl_easy()?;
+    easy.url(&url)?;
+    let mut response_content = Vec::new();
+    {
+        let mut transfer = easy.transfer();
+        transfer.write_function(|data| {
+            response_content.extend_from_slice(data);
+            Ok(data.len())
+        })?;
+        transfer.perform()?;
+    };
+
+    let res: Value = serde_json::from_slice(&response_content)?;
+    // check if response success
+    if let Value::Bool(success) = &res["success"] {
+        if !success {
+            let response_text = String::from_utf8_lossy(&response_content);
+            error!("get transactions error: {}", response_text);
+            return Err(From::from(response_text));
+        }
+    }
+    // extract block num
+    if !res["data"].is_null() {
+        if let Value::Array(data) = &res["data"] {
+            if !data.is_empty() {
+                let item = &data[0];
+                if let Value::String(block_num) = &item["block_num"] {
+                    let block_num: u64 = block_num.parse()?;
+                    return Ok(block_num);
+                } else {
+                    return Err(From::from("can not find data.block_num"));
+                }
+            } else {
+                // get last_irreversible_block_num
+                debug!("get last_irreversible_block_num from info api");
+                let block = get_info(&mut easy)?;
+                return Ok(block.last_irreversible_block_num as u64);
+            }
+        }
+    }
+    return Err(From::from("can not find data.block_num"));
 }
 
 pub fn get_info(easy: &mut Easy) -> Result<ChainInfo, Box<dyn Error>> {
