@@ -184,12 +184,19 @@ pub fn fetchcontent(connection: &PgConnection) {
                     Ok(data) => {
                         let html;
                         if !post.encryption.is_empty() {
-                            let enc_post: eos::EncPost = serde_json::from_slice(&data.as_bytes())
-                                .expect("parse encryption post failed");
-                            let dec_html_result =
-                                decrypt_aes_256_cbc(&enc_post.session, &enc_post.content);
-                            match dec_html_result {
-                                Ok(dec_html) => html = dec_html,
+                            let enc_post: eos::EncPost =
+                                match serde_json::from_slice(&data.as_bytes()) {
+                                    Ok(v) => v,
+                                    Err(e) => {
+                                        error!(
+                                        "parse encryption post failed, post.url = {}, error = {}",
+                                        post.url, e
+                                    );
+                                        continue;
+                                    }
+                                };
+                            html = match decrypt_aes_256_cbc(&enc_post.session, &enc_post.content) {
+                                Ok(v) => v,
                                 Err(e) => {
                                     error!(
                                         "decrypt enc post file_hash = {} failed: {:?}",
@@ -252,7 +259,16 @@ pub fn fetchcontent(connection: &PgConnection) {
                         }
                     }
                     Err(e) => {
-                        error!("fetch_markdown {} failed: {:?}", &post.url, e);
+                        if format!("{}", e).contains("status code: 404") {
+                            // delete posts
+                            debug!("post.file_hash = {} fetch 404, delete it", &post.file_hash);
+                            db::delete_post(connection, &post.file_hash)
+                                .expect("update post.deleted failed");
+                            db::update_notify_status(connection, &post.publish_tx_id, true)
+                                .expect("update deleted post notify status failed");
+                        } else {
+                            error!("fetch_markdown {} failed: {:?}", &post.url, e);
+                        }
                         continue;
                     }
                 }

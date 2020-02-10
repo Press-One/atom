@@ -140,6 +140,7 @@ pub fn get_posts(
     use schema::posts::dsl::*;
     posts
         .filter(fetched.eq(fetch_status))
+        .filter(deleted.eq(false))
         .limit(limit)
         .load::<Post>(conn)
 }
