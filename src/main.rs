@@ -103,7 +103,7 @@ fn main() {
                     } else {
                         error!("get database connection failed");
                     }
-                    thread::sleep(Duration::from_millis(1000));
+                    thread::sleep(Duration::from_millis(5000));
                 }
             });
 
@@ -112,31 +112,8 @@ fn main() {
 
                 loop {
                     if let Ok(db_conn) = db_conn_pool.get() {
-                        let last_tx_num: i64;
-                        let saved_tx_num = db::get_last_status(&db_conn, "tx_num");
-                        match saved_tx_num {
-                            Ok(v) => last_tx_num = v.val,
-                            Err(e) => {
-                                if e == diesel::NotFound {
-                                    last_tx_num = 0;
-                                } else {
-                                    error!("get last tx_num failed: {}", e);
-                                    continue;
-                                }
-                            }
-                        }
-                        if let Ok(max_tx_num) = db::get_max_tx_num(&db_conn) {
-                            if i64::from(max_tx_num) > last_tx_num {
-                                debug!(
-                                    "get new tx, last tx number {:?} max tx num {:?}",
-                                    last_tx_num, max_tx_num
-                                );
-                                synctxdata(&db_conn);
-                                processor::fetchcontent(&db_conn);
-                            }
-                        } else {
-                            error!("get max_tx_num failed");
-                        }
+                        synctxdata(&db_conn);
+                        processor::fetchcontent(&db_conn);
 
                         if let Ok(unnotified_list) = db::get_unnotified_list(&db_conn) {
                             for item in &unnotified_list {
@@ -148,7 +125,7 @@ fn main() {
                     } else {
                         error!("get database connection failed");
                     }
-                    thread::sleep(Duration::from_millis(1000));
+                    thread::sleep(Duration::from_millis(10000));
                 }
             });
 
