@@ -1,27 +1,26 @@
-FROM rust:latest as builder
-WORKDIR /usr/src/app
+FROM registry.gitlab.com/rust_musl_docker/image:stable-latest as builder
+WORKDIR /workdir
 COPY . .
-RUN echo "[source.crates-io]" > /usr/local/cargo/config \
-    && echo 'registry = "https://github.com/rust-lang/crates.io-index"' >> /usr/local/cargo/config \
-    && echo "replace-with = 'ustc'" >> /usr/local/cargo/config \
-    && echo "[source.ustc]" >> /usr/local/cargo/config \
-    && echo 'registry = "https://mirrors.ustc.edu.cn/crates.io-index"' >> /usr/local/cargo/config
 
-RUN cargo build -j4 --release
-RUN cargo install -j4 diesel_cli --no-default-features --features postgres
+RUN echo "[source.crates-io]" > /root/.cargo/config \
+    && echo 'registry = "https://github.com/rust-lang/crates.io-index"' >> /root/.cargo/config \
+    && echo "replace-with = 'ustc'" >> /root/.cargo/config \
+    && echo "[source.ustc]" >> /root/.cargo/config \
+    && echo 'registry = "https://mirrors.ustc.edu.cn/crates.io-index"' >> /root/.cargo/config
 
-ADD https://baseone-dev.pek3b.qingstor.com/static/wait-for-it.sh /wait-for-it.sh
-# Add Tini
+RUN cargo build -j4 --release --target=x86_64-unknown-linux-musl
+RUN cargo install -j4 diesel_cli --target=x86_64-unknown-linux-musl --no-default-features --features postgres
+
+ADD https://baseone-dev.pek3b.qingstor.com/static/wait-for /wait-for
 ADD https://baseone-dev.pek3b.qingstor.com/static/tini-static /tini
-RUN chmod +x /tini /wait-for-it.sh
+RUN chmod +x /tini /wait-for
 
-FROM rust:latest
-COPY --from=builder \
-    /usr/src/app/target/release/atom /app/atom
-COPY --from=builder /usr/src/app/migrations /app/migrations
+FROM alpine
+COPY --from=builder /workdir/target/x86_64-unknown-linux-musl/release/atom /app/atom
+COPY --from=builder /workdir/migrations /app/migrations
 COPY --from=builder /tini /tini
-COPY --from=builder /wait-for-it.sh /wait-for-it.sh
-COPY --from=builder /usr/local/cargo/bin/diesel /usr/local/cargo/bin/diesel
+COPY --from=builder /wait-for /wait-for
+COPY --from=builder /root/.cargo/bin/diesel /bin/diesel
 ENTRYPOINT ["/tini", "--"]
 
 WORKDIR /app

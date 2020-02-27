@@ -7,8 +7,8 @@ services:
       - .env
     depends_on:
       - postgres
-    command: bash -c "
-        /wait-for-it.sh postgres:5432 -- diesel migration run
+    command: sh -c "
+        /wait-for postgres:5432 -- diesel migration run
         && /app/atom syncserver
       "
     restart: always
@@ -19,8 +19,8 @@ services:
       - .env
     depends_on:
       - postgres
-    command: bash -c "
-        /wait-for-it.sh postgres:5432 -- diesel migration run
+    command: sh -c "
+        /wait-for postgres:5432 -- diesel migration run
         && /app/atom web
       "
     ports:
