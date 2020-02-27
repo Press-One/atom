@@ -1,16 +1,4 @@
 table! {
-    blocks (id) {
-        id -> Int4,
-        block_id -> Varchar,
-        block_num -> Int8,
-        block_type -> Varchar,
-        block_timestamp -> Varchar,
-        created_at -> Timestamp,
-        updated_at -> Nullable<Timestamp>,
-    }
-}
-
-table! {
     contents (file_hash) {
         file_hash -> Bpchar,
         url -> Varchar,
@@ -87,7 +75,6 @@ table! {
 }
 
 allow_tables_to_appear_in_same_query!(
-    blocks,
     contents,
     last_status,
     notifies,

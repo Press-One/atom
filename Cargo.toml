@@ -21,9 +21,9 @@ fnv = "1.0.6"
 hex ="0.4.0"
 bytes = "0.4.12"
 sentry = "0.12.0"
-jobpool = "0.3.8"
 actix-web = "1.0.7"
 rand = "0.7"
+anyhow = "1.0"
 
 [dependencies.impl2001-rs]
 git = "https://github.com/Press-One/impl2001-rs"

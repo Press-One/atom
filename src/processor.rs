@@ -1,9 +1,9 @@
 extern crate impl2001_rs;
 
+use anyhow::{anyhow, Result};
 use chrono::prelude::Utc;
 use diesel::pg::PgConnection;
 use std::env;
-use std::error::Error;
 use std::fs;
 use std::io::{sink, Write};
 use std::path::Path;
@@ -19,8 +19,8 @@ use atom_syndication::{Feed, Generator, Person};
 
 use crate::db;
 use crate::db::models::{Post, PostPartial};
-use crate::eos;
 use crate::frontmatter;
+use crate::prs;
 use crate::util;
 
 pub fn process_pip2001_message<'a>(
@@ -184,7 +184,7 @@ pub fn fetchcontent(connection: &PgConnection) {
                     Ok(data) => {
                         let html;
                         if !post.encryption.is_empty() {
-                            let enc_post: eos::EncPost =
+                            let enc_post: prs::EncPost =
                                 match serde_json::from_slice(&data.as_bytes()) {
                                     Ok(v) => v,
                                     Err(e) => {
@@ -278,8 +278,8 @@ pub fn fetchcontent(connection: &PgConnection) {
     }
 }
 
-pub fn fetch_markdown(url: String) -> std::result::Result<String, Box<dyn Error>> {
-    let mut easy = eos::get_curl_easy()?;
+pub fn fetch_markdown(url: String) -> Result<String> {
+    let mut easy = prs::get_curl_easy()?;
     easy.url(&url)?;
     let _redirect = easy.follow_location(true);
     let mut data = Vec::new();
@@ -299,13 +299,10 @@ pub fn fetch_markdown(url: String) -> std::result::Result<String, Box<dyn Error>
             if respcode == 200 {
                 Ok(html)
             } else {
-                Err(From::from(format!(
-                    "url = {} error status code: {:?}",
-                    url, respcode,
-                )))
+                Err(anyhow!("url = {} error status code: {:?}", url, respcode,))
             }
         }
-        Err(e) => Err(From::from(format!("url = {} error = {}", url, e))),
+        Err(e) => Err(anyhow!("url = {} error = {}", url, e)),
     }
 }
 
@@ -318,16 +315,15 @@ fn decrypt_aes_256_cbc(session: &str, content: &str) -> Result<String, String> {
         "hex::decode failed, encryption_key = {}",
         encryption_key
     ));
-
     crypto_util::decrypt_aes_256_cbc(String::from(content), &key, hashiv)
 }
 
-pub fn generate_atom_xml(connection: &PgConnection) {
+pub fn generate_atom_xml(connection: &PgConnection) -> Result<()> {
     dotenv().ok();
     let xml_output_dir = env::var("XML_OUTPUT_DIR").expect("XML_OUTPUT_DIR must be set");
     fs::create_dir_all(&xml_output_dir).expect("create xml_output_dir failed");
 
-    let topics_map = util::get_topics();
+    let topics_map = util::get_topics()?;
     for item in topics_map {
         let topic = item.0;
         debug!("generate atom for topic = {}", topic);
@@ -339,18 +335,21 @@ pub fn generate_atom_xml(connection: &PgConnection) {
                 let fpath = Path::new(&xml_output_dir).join(&topic);
                 let mut file = match fs::File::create(&fpath) {
                     Ok(file) => file,
-                    Err(e) => panic!(
-                        "create file failed: {}, fpath = {}",
-                        fpath.as_os_str().to_string_lossy(),
-                        e
-                    ),
+                    Err(e) => {
+                        return Err(anyhow!(
+                            "create file failed: {}, fpath = {}",
+                            fpath.as_os_str().to_string_lossy(),
+                            e
+                        ))
+                    }
                 };
-                file.write_all(atomstring.as_bytes())
-                    .expect("write all failed");
+                file.write_all(atomstring.as_bytes())?;
             }
             Err(e) => error!("get_allow_posts failed: {}", e),
         }
     }
+
+    Ok(())
 }
 
 pub fn atom(connection: &PgConnection, posts: Vec<PostPartial>) -> String {
@@ -389,7 +388,9 @@ pub fn atom(connection: &PgConnection, posts: Vec<PostPartial>) -> String {
                 entry.set_content(feed_content);
                 entries.push(entry);
                 // check and send webhook notify
-                check_and_send_webhook(connection, &post.publish_tx_id);
+                if let Err(e) = check_and_send_webhook(connection, &post.publish_tx_id) {
+                    error!("check_and_send_webhook failed: {}", e);
+                }
             }
             Err(e) => error!("get content failed: {:?}", e),
         }
@@ -402,7 +403,7 @@ pub fn atom(connection: &PgConnection, posts: Vec<PostPartial>) -> String {
     feed.to_string()
 }
 
-pub fn check_and_send_webhook(conn: &PgConnection, data_id: &str) {
+pub fn check_and_send_webhook(conn: &PgConnection, data_id: &str) -> Result<()> {
     let notify_result = db::get_notify_by_data_id(conn, data_id);
     match notify_result {
         Ok(notify) => {
@@ -415,23 +416,22 @@ pub fn check_and_send_webhook(conn: &PgConnection, data_id: &str) {
                     "block_num = {} trx_id = {} notify webhook success already, skip ...",
                     notify.block_num, notify.trx_id
                 );
-                return;
+                return Ok(());
             }
-            let payload = eos::NotifyPayload {
-                block: eos::NotifyBlock {
+            let payload = prs::NotifyPayload {
+                block: prs::NotifyBlock {
                     data_id: notify.data_id.clone(),
                     block_num: notify.block_num,
                     trx_id: notify.trx_id,
                 },
             };
-            let topics_map = util::get_topics();
+            let topics_map = util::get_topics()?;
             if let Some(notify_url) = topics_map.get(&notify.topic) {
                 debug!("send notify payload to {}", notify_url);
-                match eos::notify_webhook(&payload, notify_url) {
+                match prs::notify_webhook(&payload, notify_url) {
                     Ok(status_code) => {
                         let success = status_code == 200;
-                        db::update_notify_status(conn, &notify.data_id, success)
-                            .expect("update_notify_status failed");
+                        db::update_notify_status(conn, &notify.data_id, success)?;
                     }
                     Err(e) => error!(
                         "block_num = {}, url = {}, notify_webhook failed: {}",
@@ -444,4 +444,5 @@ pub fn check_and_send_webhook(conn: &PgConnection, data_id: &str) {
         }
         Err(e) => error!("get notify by data_id = {} failed: {:?}", data_id, e),
     }
+    Ok(())
 }

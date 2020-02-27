@@ -5,7 +5,7 @@ RUN echo "[source.crates-io]" > /usr/local/cargo/config \
     && echo 'registry = "https://github.com/rust-lang/crates.io-index"' >> /usr/local/cargo/config \
     && echo "replace-with = 'ustc'" >> /usr/local/cargo/config \
     && echo "[source.ustc]" >> /usr/local/cargo/config \
-    && echo 'registry = "git://mirrors.ustc.edu.cn/crates.io-index"' >> /usr/local/cargo/config
+    && echo 'registry = "https://mirrors.ustc.edu.cn/crates.io-index"' >> /usr/local/cargo/config
 
 RUN cargo build -j4 --release
 RUN cargo install -j4 diesel_cli --no-default-features --features postgres

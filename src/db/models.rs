@@ -8,10 +8,10 @@ use std::fmt;
 
 use crate::prs_utility_rust::utility;
 use crate::qs_rs::qs;
+use anyhow::{anyhow, Result};
 
 use super::chrono;
-use super::eos;
-use super::schema::blocks;
+use super::prs;
 use super::schema::contents;
 use super::schema::last_status;
 use super::schema::notifies;
@@ -21,9 +21,6 @@ use super::schema::users;
 
 #[derive(Serialize, Deserialize)]
 pub struct UserList(pub Vec<User>);
-
-#[derive(Serialize, Deserialize)]
-pub struct BlockList(pub Vec<Block>);
 
 #[derive(Queryable, Serialize, Deserialize, Debug, Clone)]
 pub struct User {
@@ -140,28 +137,6 @@ impl fmt::Display for BlockType {
     }
 }
 
-#[derive(Queryable, Debug, Serialize, Deserialize)]
-pub struct Block {
-    pub id: i32,
-    pub block_id: String,
-    pub block_num: i64,
-    pub block_type: String, // BlockType
-    pub block_timestamp: String,
-    pub created_at: chrono::NaiveDateTime,
-    pub updated_at: Option<chrono::NaiveDateTime>,
-}
-
-#[derive(Insertable, AsChangeset, Debug)]
-#[table_name = "blocks"]
-pub struct NewBlock<'a> {
-    pub block_id: &'a str,
-    pub block_num: i64,
-    pub block_type: &'a str,
-    pub block_timestamp: &'a str,
-    pub created_at: chrono::NaiveDateTime,
-    pub updated_at: Option<chrono::NaiveDateTime>,
-}
-
 #[derive(Queryable, Debug)]
 pub struct Trx {
     pub id: i32,
@@ -179,7 +154,7 @@ pub struct Trx {
 
 impl Trx {
     pub fn get_file_hash(&self) -> Option<String> {
-        let data: eos::Pip2001ActionData =
+        let data: prs::Pip2001ActionData =
             serde_json::from_str(&self.data).expect("parse trx data failed");
         let inner_data: Value = serde_json::from_str(&data.data).expect("parse inner data failed");
         if !inner_data["file_hash"].is_null() {
@@ -192,7 +167,7 @@ impl Trx {
 
     pub fn to_post_json_str(&self) -> String {
         let mut result: HashMap<String, String> = HashMap::new();
-        let data: eos::Pip2001ActionData =
+        let data: prs::Pip2001ActionData =
             serde_json::from_str(&self.data).expect("parse trx data failed");
         let meta: Value = serde_json::from_str(&data.meta).expect("parse data meta failed");
         let inner_data: Value = serde_json::from_str(&data.data).expect("parse inner data failed");
@@ -249,33 +224,41 @@ impl Trx {
         serde_json::to_string(&result).expect("json dumps post json failed")
     }
 
-    pub fn verify_signature(&self) -> Result<bool, Box<dyn std::error::Error>> {
-        let data: eos::Pip2001ActionData = serde_json::from_str(&self.data)?;
+    pub fn verify_signature(&self) -> Result<bool> {
+        let data: prs::Pip2001ActionData = serde_json::from_str(&self.data)?;
         let result = qs::json_to_qs(&data.data);
         match result {
             Ok(_s) => {
                 let hash_alg = &data.get_hash_alg()?;
                 let _s_hash = if hash_alg == "keccak256" || hash_alg == "" {
-                    utility::keccak256(&_s)?
+                    match utility::keccak256(&_s) {
+                        Ok(v) => v,
+                        Err(e) => return Err(anyhow!("utility::keccak256 failed: {}", e)),
+                    }
                 } else if hash_alg == "sha256" {
-                    utility::sha256(&_s)?
+                    match utility::sha256(&_s) {
+                        Ok(v) => v,
+                        Err(e) => return Err(anyhow!("utility::sha256 failed: {}", e)),
+                    }
                 } else {
-                    let e: Box<dyn std::error::Error> =
-                        format!("data_id = {}, unsupport hash_alg = {}", data.id, hash_alg).into();
-                    return Err(e);
+                    return Err(anyhow!(
+                        "data_id = {}, unsupport hash_alg = {}",
+                        data.id,
+                        hash_alg
+                    ));
                 };
 
                 if _s_hash == data.hash {
                     let result = utility::recover_user_pubaddress(&data.signature, &_s_hash);
                     match result {
                         Ok(_r) => Ok(_r == self.user_address),
-                        Err(_) => Ok(false),
+                        Err(e) => Err(anyhow!(e)),
                     }
                 } else {
                     Ok(false)
                 }
             }
-            Err(_) => Ok(false),
+            Err(e) => Err(anyhow!(e)),
         }
     }
 }

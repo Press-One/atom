@@ -5,11 +5,15 @@ extern crate env_logger;
 extern crate log;
 #[macro_use]
 extern crate diesel;
+#[macro_use]
+extern crate serde_json;
+
 extern crate impl2001_rs;
 extern crate prs_utility_rust;
 extern crate qs_rs;
 extern crate sentry;
 
+use anyhow::Result;
 use diesel::pg::PgConnection;
 use dotenv::dotenv;
 use std::env;
@@ -18,10 +22,10 @@ use std::time::Duration;
 
 mod crypto_util;
 pub mod db;
-mod eos;
 mod frontmatter;
 mod handlers;
 mod processor;
+mod prs;
 mod url;
 mod util;
 
@@ -30,6 +34,25 @@ use crate::impl2001_rs::pip::Pip;
 
 fn main() {
     env_logger::init();
+    init_sentry();
+
+    let mut args: Vec<String> = env::args().collect();
+    check_or_show_usage(&args);
+
+    let command: &str = &args[1];
+    info!("run command = {}", command);
+
+    match command {
+        "fetch" => run_fetch(),
+        "syncserver" => run_syncserver(&mut args),
+        "processpost" => process_post(),
+        "atom" => generate_atom(),
+        "web" => run_web(),
+        _ => check_or_show_usage(&vec![]),
+    }
+}
+
+fn init_sentry() {
     // init sentry
     let _guard;
     if let Ok(sentry_dsn) = env::var("SENTRY_DSN") {
@@ -38,150 +61,132 @@ fn main() {
     } else {
         debug!("can not get SENTRY_DSN environment variable, skip sentry integration");
     }
+}
 
-    let args: Vec<String> = env::args().collect();
-    let command: &str;
-
+fn check_or_show_usage(args: &Vec<String>) {
     let usage = format!("usage: {} <fetch|syncserver|processpost|atom>", &args[0]);
     if args.len() <= 1 {
         println!("{}", usage);
         process::exit(0);
     }
+}
 
-    command = &args[1];
-    info!("command = {}", command);
+fn run_fetch() {
+    let db_conn_pool = db::establish_connection_pool();
+    match db_conn_pool.get() {
+        Ok(db_conn) => processor::fetchcontent(&db_conn),
+        Err(e) => error!("db_conn_pool.get failed: {}", e),
+    }
+}
 
-    match command {
-        "fetch" => {
-            let db_conn_pool = db::establish_connection_pool();
+fn run_syncserver(args: &mut Vec<String>) {
+    let mut args = args.clone();
+    let _handle = thread::spawn(move || {
+        let db_conn_pool = db::establish_connection_pool();
+        loop {
             if let Ok(db_conn) = db_conn_pool.get() {
-                processor::fetchcontent(&db_conn);
+                let start_block_num: i64;
+                if args.len() == 3 {
+                    start_block_num = args
+                        .remove(2)
+                        .parse()
+                        .expect("parse start_block_num from command line args failed");
+                } else {
+                    if let Ok(last_block_num) = db::get_last_status(&db_conn, "block_num") {
+                        start_block_num = last_block_num.val;
+                    } else {
+                        match prs::get_start_block_num() {
+                            Ok(v) => start_block_num = v as i64,
+                            Err(e) => {
+                                error!("get_start_block_num failed: {}", e);
+                                continue;
+                            }
+                        }
+                    }
+                }
+
+                if let Err(e) = sync_transactions(&db_conn, start_block_num) {
+                    error!("sync_transactions failed: {}", e);
+                }
+                info!("sync transactions done. sleep...");
+            } else {
+                error!("get database connection failed");
             }
+            thread::sleep(Duration::from_millis(5000));
         }
-        "syncserver" => {
-            let _handle = thread::spawn(move || {
-                let db_conn_pool = db::establish_connection_pool();
-                loop {
-                    if let Ok(db_conn) = db_conn_pool.get() {
-                        let start_block_num: i64;
-                        if args.len() == 3 {
-                            start_block_num = args[2]
-                                .parse()
-                                .expect("parse start_block_num from command line args failed");
-                        } else {
-                            if let Ok(last_block_num) = db::get_last_status(&db_conn, "block_num") {
-                                start_block_num = last_block_num.val;
-                            } else {
-                                match eos::get_start_block_num() {
-                                    Ok(v) => start_block_num = v as i64,
-                                    Err(e) => {
-                                        error!("get_start_block_num failed: {}", e);
-                                        continue;
-                                    }
-                                }
-                            }
-                        }
+    });
 
-                        if let Ok(mut easy) = eos::get_curl_easy() {
-                            let info_result = eos::get_info(&mut easy);
-                            match info_result {
-                                Ok(info) => {
-                                    let last_irreversible_block_num =
-                                        info.last_irreversible_block_num;
-                                    info!("last block number {:?}", last_irreversible_block_num);
-                                    if last_irreversible_block_num > start_block_num {
-                                        debug!("find new blocks!");
-                                        sync_blocks(&db_conn, start_block_num);
-                                    }
-                                }
-                                Err(e) => error!("get info failed: {:?}", e),
-                            }
-                            info!("sync blocks done. sleep...");
-                        } else {
-                            error!("get curl easy failed");
-                        }
-                    } else {
-                        error!("get database connection failed");
-                    }
-                    thread::sleep(Duration::from_millis(5000));
-                }
-            });
+    let handle_tx = thread::spawn(move || {
+        let db_conn_pool = db::establish_connection_pool();
 
-            let handle_tx = thread::spawn(move || {
-                let db_conn_pool = db::establish_connection_pool();
-
-                loop {
-                    if let Ok(db_conn) = db_conn_pool.get() {
-                        synctxdata(&db_conn);
-                        processor::fetchcontent(&db_conn);
-
-                        if let Ok(unnotified_list) = db::get_unnotified_list(&db_conn) {
-                            for item in &unnotified_list {
-                                processor::check_and_send_webhook(&db_conn, &item.data_id);
-                            }
-                        } else {
-                            error!("get_unnotified_list failed");
-                        }
-                    } else {
-                        error!("get database connection failed");
-                    }
-                    thread::sleep(Duration::from_millis(10000));
-                }
-            });
-
-            handle_tx.join().expect("handle_tx.join failed");
-        }
-        "processpost" => {
-            let db_conn_pool = db::establish_connection_pool();
+        loop {
             if let Ok(db_conn) = db_conn_pool.get() {
                 synctxdata(&db_conn);
                 processor::fetchcontent(&db_conn);
+
+                if let Ok(unnotified_list) = db::get_unnotified_list(&db_conn) {
+                    for item in &unnotified_list {
+                        if let Err(e) = processor::check_and_send_webhook(&db_conn, &item.data_id) {
+                            error!("check_and_send_webhook failed: {}", e);
+                        }
+                    }
+                } else {
+                    error!("get_unnotified_list failed");
+                }
             } else {
                 error!("get database connection failed");
             }
+            thread::sleep(Duration::from_millis(10000));
         }
-        "atom" => {
-            let db_conn_pool = db::establish_connection_pool();
-            if let Ok(db_conn) = db_conn_pool.get() {
-                processor::generate_atom_xml(&db_conn);
-            } else {
-                error!("get database connection failed");
-            }
-        }
-        "web" => {
-            use actix_web::{middleware, web, App, HttpServer};
+    });
 
-            dotenv().ok();
-            let bind_address = env::var("BIND_ADDRESS").expect("BIND_ADDRESS must be set");
+    handle_tx.join().expect("handle_tx.join failed");
+}
 
-            HttpServer::new(move || {
-                App::new()
-                    .wrap(middleware::Compress::default())
-                    .data(db::establish_connection_pool())
-                    .service(web::resource("/users").route(web::get().to(handlers::users::list)))
-                    .service(web::resource("/blocks").route(web::get().to(handlers::blocks::list)))
-                    .service(
-                        web::resource("/json_posts")
-                            .route(web::get().to(handlers::posts::list_all_asc)),
-                    )
-                    .service(
-                        web::resource("/posts")
-                            .route(web::get().to(handlers::posts::list_all_atom_by_asc)),
-                    )
-                    .service(
-                        web::resource("/atom").route(web::get().to(handlers::posts::list_latest)),
-                    )
-            })
-            .bind(&bind_address)
-            .unwrap_or_else(|_| panic!("can not bind to {}", &bind_address))
-            .run()
-            .expect("HttpServer::new failed");
-        }
-        _ => {
-            println!("{}", usage);
-            process::exit(0);
-        }
+fn process_post() {
+    let db_conn_pool = db::establish_connection_pool();
+    if let Ok(db_conn) = db_conn_pool.get() {
+        synctxdata(&db_conn);
+        processor::fetchcontent(&db_conn);
+    } else {
+        error!("get database connection failed");
     }
+}
+
+fn generate_atom() {
+    let db_conn_pool = db::establish_connection_pool();
+    if let Ok(db_conn) = db_conn_pool.get() {
+        if let Err(e) = processor::generate_atom_xml(&db_conn) {
+            error!("generate_atom_xml failed: {}", e);
+        }
+    } else {
+        error!("get database connection failed");
+    }
+}
+
+fn run_web() {
+    use actix_web::{middleware, web, App, HttpServer};
+
+    dotenv().ok();
+    let bind_address = env::var("BIND_ADDRESS").expect("BIND_ADDRESS must be set");
+
+    HttpServer::new(move || {
+        App::new()
+            .wrap(middleware::Compress::default())
+            .data(db::establish_connection_pool())
+            .service(web::resource("/users").route(web::get().to(handlers::users::list)))
+            .service(
+                web::resource("/json_posts").route(web::get().to(handlers::posts::list_all_asc)),
+            )
+            .service(
+                web::resource("/posts").route(web::get().to(handlers::posts::list_all_atom_by_asc)),
+            )
+            .service(web::resource("/atom").route(web::get().to(handlers::posts::list_latest)))
+    })
+    .bind(&bind_address)
+    .unwrap_or_else(|_| panic!("can not bind to {}", &bind_address))
+    .run()
+    .expect("HttpServer::new failed");
 }
 
 pub fn synctxdata(connection: &PgConnection) {
@@ -210,7 +215,7 @@ pub fn synctxdata(connection: &PgConnection) {
 
                     match post {
                         Ok(Some(pipobject)) => {
-                            let data: eos::Pip2001ActionData =
+                            let data: prs::Pip2001ActionData =
                                 serde_json::from_str(&trx.data).expect("parse trx data failed");
                             // verify user pubaddr and sign
                             let encryption = data.get_encryption();
@@ -259,71 +264,54 @@ pub fn synctxdata(connection: &PgConnection) {
     }
 }
 
-fn sync_blocks(conn: &PgConnection, start_block_num: i64) {
-    let env_thread_num = env::var("THREAD_NUM").expect("THREAD_NUM must be set");
-    let thread_num: u32 = env_thread_num
-        .parse::<u32>()
-        .expect("env_thread_num.parse failed");
-    let topics_map = util::get_topics();
-    let topics: Vec<String> = topics_map.iter().map(|(topic, _)| topic.clone()).collect();
-    let blocksbatch = eos::BlockIteratorBatch::new(thread_num, start_block_num);
-    for blocks in blocksbatch {
-        for block in blocks {
-            let should_update_block_num = block.block_num % 100 == 0;
-            let block_type = db::get_block_type(&block);
-            if block_type == db::models::BlockType::EMPTY {
-                debug!(
-                    "block_num = {}, empty transaction data, skip ...",
-                    block.block_num
+fn sync_transactions(conn: &PgConnection, start_block_num: i64) -> Result<()> {
+    let mut start_block_num = start_block_num;
+    let mut easy = prs::get_curl_easy().expect("get curl easy failed");
+    loop {
+        let transactions = prs::fetch_transactions(&mut easy, start_block_num, 20)?;
+        if transactions.is_empty() {
+            return Ok(());
+        }
+
+        for trx in transactions {
+            start_block_num = trx.block_num;
+            let topic = trx.get_topic();
+            debug!("got block_num = {} topic = {}", trx.block_num, &topic);
+            if !trx.has_invalid_topic() {
+                // 没有 topic 字段, skip
+                info!(
+                    "block_num = {} topic = {} not contains in topics, skip ...",
+                    trx.block_num, &topic
                 );
-                if should_update_block_num {
-                    if let Err(e) = db::update_last_status(&conn, "block_num", block.block_num) {
-                        error!("update last_block_num failed: {:?}", e);
+                db::update_last_status(&conn, "block_num", trx.block_num)?;
+                continue;
+            }
+
+            debug!("new transaction: {:?}", trx);
+            db::save_trx(&conn, &trx)?;
+            let payload = match trx.get_notify_payload() {
+                Ok(v) => match v {
+                    Some(vv) => vv,
+                    None => {
+                        // PUBLISH_MANAGEMENT
+                        continue;
                     }
-                }
-            } else {
-                if block_type == db::models::BlockType::DATA && !block.has_topic(&topics) {
-                    // 没有 topic 字段, skip
-                    info!(
-                        "block_num = {} not contains by topics = {:?}, skip ...",
-                        block.block_num, topics
-                    );
-                    if should_update_block_num {
-                        if let Err(e) = db::update_last_status(&conn, "block_num", block.block_num)
-                        {
-                            error!("update last_block_num failed: {:?}", e);
-                        }
-                    }
+                },
+                Err(e) => {
+                    error!("get_notify_payload failed: {}", e);
                     continue;
                 }
+            };
 
-                debug!("new block: {:?}", block);
-                let result = db::save_block(&conn, &block);
-                match result {
-                    Ok(_) => {
-                        if let Err(e) = db::update_last_status(&conn, "block_num", block.block_num)
-                        {
-                            error!("update last_block_num failed: {:?}", e);
-                        }
-                    }
-                    Err(e) => error!("save block failed: {}", e),
-                }
-                for payload in block.get_notify_payloads() {
-                    let mut notify_topic = String::from("");
-                    let data_id = payload.block.data_id;
-                    if let Some(_v) = block.get_topic_by_data_id(&data_id) {
-                        notify_topic = _v;
-                    }
-                    db::save_notify(
-                        &conn,
-                        &data_id,
-                        payload.block.block_num,
-                        &payload.block.trx_id,
-                        &notify_topic,
-                    )
-                    .expect("save notify failed");
-                }
-            }
+            let data_id = payload.block.data_id;
+            db::save_notify(
+                &conn,
+                &data_id,
+                payload.block.block_num,
+                &payload.block.trx_id,
+                &trx.get_topic(),
+            )?;
+            db::update_last_status(&conn, "block_num", trx.block_num)?;
         }
     }
 }

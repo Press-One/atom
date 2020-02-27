@@ -11,9 +11,8 @@ use std::time::Duration;
 
 pub mod models;
 pub mod schema;
-use super::eos;
+use super::prs;
 
-use self::models::{Block, BlockList, BlockType, NewBlock};
 use self::models::{Content, NewContent};
 use self::models::{LastStatus, NewLastStatus};
 use self::models::{NewNotify, Notify, NotifyPartial};
@@ -343,30 +342,23 @@ pub fn update_last_status(
     }
 }
 
-pub fn save_trx(
-    conn: &PgConnection,
-    block_num: i64,
-    trx_id: &str,
-    data_type: &str,
-    data: &str,
-) -> Result<Trx, diesel::result::Error> {
+pub fn save_trx(conn: &PgConnection, trx: &prs::Transaction) -> Result<Trx, diesel::result::Error> {
     use schema::transactions;
 
-    let action_data: eos::Pip2001ActionData =
-        serde_json::from_str(data).expect("parse trx data failed");
+    let action_data: prs::Pip2001ActionData = trx.data.clone();
     let new_trx = NewTrx {
-        block_num,
+        block_num: trx.block_num,
         data_type: &action_data._type,
-        data,
+        data: &json!(action_data).to_string(),
         created_at: Utc::now().naive_utc(),
         updated_at: None,
-        trx_id,
+        trx_id: &trx.trx_id.clone(),
         signature: &action_data.signature,
         hash: &action_data.hash,
         user_address: &action_data.user_address,
     };
 
-    let trx = diesel::insert_into(transactions::table)
+    let item = diesel::insert_into(transactions::table)
         .values(&new_trx)
         .on_conflict(transactions::trx_id)
         .do_update()
@@ -375,10 +367,10 @@ pub fn save_trx(
 
     info!(
         "saved trx data from block_num = {}, data_type = {}",
-        block_num, data_type
+        trx.block_num, trx.data_type
     );
 
-    trx
+    item
 }
 
 pub fn get_trx_by_trx_id(conn: &PgConnection, trx_id: &str) -> Result<Trx, diesel::result::Error> {
@@ -419,83 +411,6 @@ pub fn update_trx_status(
         _processed, _block_num
     );
     result
-}
-
-pub fn save_block(
-    conn: &PgConnection,
-    eos_block: &eos::Block,
-) -> Result<Block, diesel::result::Error> {
-    use schema::blocks;
-
-    let block_num: i64 = eos_block.block_num;
-    let block_type = &get_block_type(&eos_block).to_string();
-
-    let new_block = NewBlock {
-        block_id: &eos_block.block_id,
-        block_num,
-        block_type,
-        block_timestamp: &eos_block.timestamp,
-        created_at: Utc::now().naive_utc(),
-        updated_at: None,
-    };
-    let block = diesel::insert_into(blocks::table)
-        .values(&new_block)
-        .on_conflict(blocks::block_num)
-        .do_update()
-        .set(&new_block)
-        .get_result(conn);
-
-    info!(
-        "saved block_num = {}, block_type = {}",
-        eos_block.block_num, block_type
-    );
-
-    for trx in &eos_block.trxs {
-        for action in &trx.actions {
-            match &action {
-                eos::Pip2001Action::Data(data) => {
-                    let data = data.clone();
-                    let data_type = &data._type;
-                    let data_str = serde_json::to_string(&data).expect("can not dumps action data");
-                    let trx_id = &trx.trx_id;
-                    save_trx(conn, block_num, trx_id, data_type, &data_str)?;
-                }
-                _ => error!("unsupport trx action = {:?}", action),
-            }
-        }
-    }
-
-    block
-}
-
-pub fn get_block(conn: &PgConnection, block_id: &str) -> Result<Block, diesel::result::Error> {
-    use schema::blocks;
-
-    blocks::table
-        .filter(blocks::block_id.eq(block_id))
-        .first::<Block>(conn)
-}
-
-pub fn get_block_type(block: &eos::Block) -> BlockType {
-    // FIXME: should check action_type not block_type
-    for transaction in &block.trxs {
-        for action in &transaction.actions {
-            match action {
-                eos::Pip2001Action::Data(data) => {
-                    if data._type == "PIP:2001" {
-                        // FIXME: hardcode
-                        return BlockType::DATA;
-                    }
-                }
-                _ => error!(
-                    "block_num = {} unsupport pip2001 action = {:?}",
-                    block.block_num, action
-                ),
-            }
-        }
-    }
-
-    BlockType::EMPTY
 }
 
 pub fn save_notify(
@@ -602,20 +517,5 @@ impl UserList {
             })
             .collect();
         UserList(res)
-    }
-}
-
-impl BlockList {
-    pub fn list(conn: &PgConnection, offset: i64, limit: i64) -> Self {
-        use schema::blocks::dsl::*;
-
-        let result = blocks
-            .order(block_num.asc())
-            .limit(limit)
-            .offset(offset)
-            .load::<Block>(conn)
-            .expect("loading users failed");
-
-        BlockList(result)
     }
 }

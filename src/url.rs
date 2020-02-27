@@ -1,6 +1,6 @@
+use anyhow::Result;
 use rand::{thread_rng, Rng};
 use std::env;
-use std::error::Error;
 
 pub struct URL {
     urls: Vec<String>,
@@ -18,11 +18,7 @@ impl URL {
         URL { urls }
     }
 
-    fn parse_url(
-        url: &str,
-        left_sep: char,
-        right_sep: char,
-    ) -> Result<Vec<String>, Box<dyn Error>> {
+    fn parse_url(url: &str, left_sep: char, right_sep: char) -> Result<Vec<String>> {
         let mut urls = Vec::new();
         let origin_urls = vec![String::from(url)];
 

@@ -119,3 +119,16 @@ cargo run syncserver 22270
 ```
 cargo run web
 ```
+
+## 请求 transaction
+
+参数：
+
+- blocknum 或 timestamp，作为起始点
+- type, 比如：`PIP:2001`
+- count，一次返回多少条数据
+
+    http GET 'https://prs-bp-dev.press.one/api/chain/transactions?blocknum=682164&type=PIP:2001&count=10'
+
+    http GET 'https://prs-bp-dev.press.one/api/chain/transactions?timestamp=2020-01-12T19:27:28.000Z&type=PIP:2001&count=2'
+

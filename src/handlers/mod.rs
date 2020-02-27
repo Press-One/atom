@@ -3,7 +3,6 @@ use actix_web::web;
 use actix_web::HttpResponse;
 use serde::{Deserialize, Serialize};
 
-pub mod blocks;
 pub mod posts;
 pub mod users;
 
