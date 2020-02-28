@@ -27,13 +27,13 @@ THREAD_NUM=3
 #### build docker image
 
 ```
-docker build -f Dockerfile -t atom
+docker build -f Dockerfile -t pressone/atom
 ```
 
 国内用户使用下面的命令：
 
 ```
-docker build -f Dockerfile_cn -t atom
+docker build -f Dockerfile_cn -t pressone/atom
 ```
 
 #### 运行
