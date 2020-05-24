@@ -128,7 +128,22 @@ cargo run web
 - type, 比如：`PIP:2001`
 - count，一次返回多少条数据
 
-    http GET 'https://prs-bp-dev.press.one/api/chain/transactions?blocknum=682164&type=PIP:2001&count=10'
+### 基于 blocknum 请求
 
-    http GET 'https://prs-bp-dev.press.one/api/chain/transactions?timestamp=2020-01-12T19:27:28.000Z&type=PIP:2001&count=2'
+```
+http GET 'https://prs-bp-dev.press.one/api/chain/transactions?blocknum=682164&type=PIP:2001&count=10'
+```
 
+### 基于 timestamp 请求
+
+```
+http GET 'https://prs-bp-dev.press.one/api/chain/transactions?timestamp=2020-01-12T19:27:28.000Z&type=PIP:2001&count=2'
+```
+
+### 基于 topic 请求
+
+```
+http GET 'https://prs-bp1.press.one/api/chain/transactions?type=PIP:2001&topic=e6e2ff0ca504f7a2cf8237eac103f52f67fe5016&count=2'
+```
+
+注: 该接口也支持 `timestamp` 参数

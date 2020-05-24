@@ -214,14 +214,15 @@ impl Transaction {
     }
 }
 
-pub fn fetch_transactions(
+pub fn fetch_transactions_by_topic(
     easy: &mut Easy,
+    topic: &str,
     block_num: i64,
     count: usize,
 ) -> Result<Vec<Transaction>> {
     let url_suffix = format!(
-        "/transactions?blocknum={}&type=PIP:2001&count={}",
-        block_num, count
+        "/transactions?topic={}&blocknum={}&type=PIP:2001&count={}",
+        &topic, block_num, count
     );
     let url = URL::new().get_url(&url_suffix);
 
@@ -338,12 +339,8 @@ pub fn get_curl_easy() -> Result<Easy> {
     Ok(easy)
 }
 
-pub fn get_start_block_num() -> Result<u64> {
-    let timestamp = util::now_str();
-    let url_suffix = format!(
-        "/transactions?timestamp={}&type=PIP:2001&count=1",
-        timestamp
-    );
+pub fn get_start_block_num_by_topic(topic: &str) -> Result<u64> {
+    let url_suffix = format!("/transactions?topic={}&type=PIP:2001&count=1", topic);
     let url = URL::new().get_url(&url_suffix);
     debug!("access url: {}", url);
 
@@ -369,12 +366,7 @@ pub fn get_start_block_num() -> Result<u64> {
     if block_num > 0 {
         return Ok(block_num);
     } else {
-        // get last_irreversible_block_num
-        debug!("get last_irreversible_block_num from info api");
-        match get_info(&mut easy) {
-            Ok(block) => return Ok(block.last_irreversible_block_num as u64),
-            Err(e) => return Err(anyhow!(e)),
-        }
+        return Err(anyhow!("get_start_block_num for topic: {} failed", topic));
     }
 }
 

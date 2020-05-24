@@ -36,7 +36,7 @@ fn main() {
     env_logger::init();
     init_sentry();
 
-    let mut args: Vec<String> = env::args().collect();
+    let args: Vec<String> = env::args().collect();
     check_or_show_usage(&args);
 
     let command: &str = &args[1];
@@ -44,7 +44,7 @@ fn main() {
 
     match command {
         "fetch" => run_fetch(),
-        "syncserver" => run_syncserver(&mut args),
+        "syncserver" => run_syncserver(),
         "processpost" => process_post(),
         "atom" => generate_atom(),
         "web" => run_web(),
@@ -79,42 +79,38 @@ fn run_fetch() {
     }
 }
 
-fn run_syncserver(args: &mut Vec<String>) {
-    let mut args = args.clone();
-    let _handle = thread::spawn(move || {
-        let db_conn_pool = db::establish_connection_pool();
-        loop {
-            if let Ok(db_conn) = db_conn_pool.get() {
-                let start_block_num: i64;
-                if args.len() == 3 {
-                    start_block_num = args
-                        .remove(2)
-                        .parse()
-                        .expect("parse start_block_num from command line args failed");
-                } else {
-                    if let Ok(last_block_num) = db::get_last_status(&db_conn, "block_num") {
+fn run_syncserver() {
+    let topics = util::get_topics().unwrap();
+    for (topic, _) in topics {
+        let _handle = thread::spawn(move || {
+            let last_block_num_key = util::get_last_block_num_by_topic(&topic);
+            let db_conn_pool = db::establish_connection_pool();
+            loop {
+                if let Ok(db_conn) = db_conn_pool.get() {
+                    let start_block_num: i64;
+                    if let Ok(last_block_num) = db::get_last_status(&db_conn, &last_block_num_key) {
                         start_block_num = last_block_num.val;
                     } else {
-                        match prs::get_start_block_num() {
+                        match prs::get_start_block_num_by_topic(&topic) {
                             Ok(v) => start_block_num = v as i64,
                             Err(e) => {
-                                error!("get_start_block_num failed: {}", e);
+                                error!("get_start_block_num for topic: {} failed: {}", &topic, e);
                                 continue;
                             }
                         }
                     }
-                }
 
-                if let Err(e) = sync_transactions(&db_conn, start_block_num) {
-                    error!("sync_transactions failed: {}", e);
+                    if let Err(e) = sync_transactions(&db_conn, &topic, start_block_num) {
+                        error!("sync_transactions for topic: {} failed: {}", &topic, e);
+                    }
+                    info!("sync transactions for topic: {} done. sleep...", &topic);
+                } else {
+                    error!("get database connection failed");
                 }
-                info!("sync transactions done. sleep...");
-            } else {
-                error!("get database connection failed");
+                thread::sleep(Duration::from_millis(5000));
             }
-            thread::sleep(Duration::from_millis(5000));
-        }
-    });
+        });
+    }
 
     let handle_tx = thread::spawn(move || {
         let db_conn_pool = db::establish_connection_pool();
@@ -264,30 +260,23 @@ pub fn synctxdata(connection: &PgConnection) {
     }
 }
 
-fn sync_transactions(conn: &PgConnection, start_block_num: i64) -> Result<()> {
+fn sync_transactions(conn: &PgConnection, topic: &str, start_block_num: i64) -> Result<()> {
     let mut start_block_num = start_block_num;
     let mut easy = prs::get_curl_easy().expect("get curl easy failed");
     loop {
-        let transactions = prs::fetch_transactions(&mut easy, start_block_num, 20)?;
+        let transactions =
+            prs::fetch_transactions_by_topic(&mut easy, &topic, start_block_num, 20)?;
         if transactions.is_empty() {
             return Ok(());
         }
 
         for trx in transactions {
             start_block_num = trx.block_num;
-            let topic = trx.get_topic();
-            debug!("got block_num = {} topic = {}", trx.block_num, &topic);
-            if !trx.has_invalid_topic() {
-                // 没有 topic 字段, skip
-                info!(
-                    "block_num = {} topic = {} not contains in topics, skip ...",
-                    trx.block_num, &topic
-                );
-                db::update_last_status(&conn, "block_num", trx.block_num)?;
-                continue;
-            }
+            debug!(
+                "got block_num = {} topic = {}, new transaction: {:?}",
+                trx.block_num, &topic, &trx
+            );
 
-            debug!("new transaction: {:?}", trx);
             db::save_trx(&conn, &trx)?;
             let payload = match trx.get_notify_payload() {
                 Ok(v) => match v {
@@ -311,7 +300,8 @@ fn sync_transactions(conn: &PgConnection, start_block_num: i64) -> Result<()> {
                 &payload.block.trx_id,
                 &trx.get_topic(),
             )?;
-            db::update_last_status(&conn, "block_num", trx.block_num)?;
+            let key = util::get_last_block_num_by_topic(&trx.get_topic());
+            db::update_last_status(&conn, &key, trx.block_num)?;
         }
     }
 }

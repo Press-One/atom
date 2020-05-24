@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::env;
 extern crate chrono;
 use anyhow::{anyhow, Result};
-use chrono::{DateTime, SecondsFormat, Utc};
 
 use dotenv::dotenv;
 
@@ -24,9 +23,8 @@ pub fn get_topics() -> Result<HashMap<String, String>> {
     Ok(res)
 }
 
-pub fn now_str() -> String {
-    let utc: DateTime<Utc> = Utc::now();
-    utc.to_rfc3339_opts(SecondsFormat::Millis, true)
+pub fn get_last_block_num_by_topic(topic: &str) -> String {
+    return format!("{}_block_num", topic.to_lowercase());
 }
 
 #[cfg(test)]
