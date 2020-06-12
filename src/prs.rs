@@ -9,8 +9,9 @@ use std::collections::HashMap;
 use std::io::Read;
 use std::time::Duration;
 
+use super::SETTINGS;
+use crate::settings;
 use crate::url::URL;
-use crate::util;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ChainInfo {
@@ -152,10 +153,7 @@ impl Transaction {
     }
 
     pub fn has_invalid_topic(&self) -> bool {
-        if let Ok(topics) = util::get_topics() {
-            return topics.contains_key(&self.get_topic());
-        }
-        false
+        settings::Settings::contains_topic(&SETTINGS, &self.get_topic())
     }
 
     pub fn get_notify_payload(&self) -> Result<Option<NotifyPayload>> {

@@ -3,10 +3,9 @@ WORKDIR /workdir
 COPY . .
 
 RUN echo "[source.crates-io]" > /root/.cargo/config \
-    && echo 'registry = "https://github.com/rust-lang/crates.io-index"' >> /root/.cargo/config \
-    && echo "replace-with = 'ustc'" >> /root/.cargo/config \
-    && echo "[source.ustc]" >> /root/.cargo/config \
-    && echo 'registry = "https://mirrors.ustc.edu.cn/crates.io-index"' >> /root/.cargo/config
+    && echo "replace-with = 'tuna'" >> /root/.cargo/config \
+    && echo "[source.tuna]" >> /root/.cargo/config \
+    && echo 'registry = "https://mirrors.tuna.tsinghua.edu.cn/git/crates.io-index.git"' >> /root/.cargo/config
 
 RUN cargo build -j4 --release --target=x86_64-unknown-linux-musl
 RUN cargo install -j4 diesel_cli --target=x86_64-unknown-linux-musl --no-default-features --features postgres

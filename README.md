@@ -2,27 +2,58 @@
 
 ### docker-compose 运行 atom
 
-#### 准备 `atom.env`
+#### 准备配置文件
+
+##### .env
 
 ```
-POSTGRES_PASSWORD=<YOUR-POSTGRES-PASSWORD>
-POSTGRES_DB=atom
-RUST_LOG=debug
+.env
+RUST_LOG=info
 RUST_BACKTRACE=full
-DATABASE_URL=postgresql://postgres:<YOUR-POSTGRES-PASSWORD>@postgres/atom
-PRS_BASE_URL=https://prs-bp-dev.press.one/api/chain
-TOPIC=<YOUR-TOPIC-ADDRESS>;<YOUR-WEBHOOK-URL>
+ATOM_IMAGE=${your-atom-docker-image}
+POSTGRES_PASSWORD=${db-password}
+POSTGRES_DB=${db-name}
+DATABASE_URL=postgresql://${db-user}:${db-password}@${db-host}/${db-name}
 BIND_PORT=7070
-BIND_ADDRESS=0.0.0.0:7070
-ENCRYPTION_KEY=<YOUR-ENCRYPTION-KEY>
-IV_PREFIX=<YOUR-IV-PREFIX>
-THREAD_NUM=3
 ```
 
 注：
 
-- `POSTGRES_PASSWORD`、`DATABASE_URL`、`TOPIC`、`ENCRYPTION_KEY`、`IV_PREFIX` 需要根据自己的情况修改
-- `PRS_BASE_URL` 支持 `http://a[1-2].com`，它将会展开为 `http://a1.com` 、`http://a2.com`；请求时随机选择其中之一
+- `diesel` 不支持从 `Settings.toml` 获取配置文件，所以需要该配置文件
+- `postgresql` 的默认 `${db-user}` 是 `postgres`
+
+##### Settings.toml
+
+配置文件名为：`Settings.toml`，**文件名必须是它，否则无法找到配置文件**
+
+```
+[atom]
+db_url = "postgresql://<DB_USER>:<DB_PASSWORD>@<DB_HOST>/<DB_NAME>"  # 根据自己的数据库配置修改
+# prs_base_url 支持 `http://a[1-2].com`，它将会展开为 `http://a1.com` 、`http://a2.com`；请求时随机选择其中之一
+prs_base_url = "https://prs-bp[1-3].press.one/api/chain"
+bind_address = "0.0.0.0:8080"  # web 服务监听地址
+sentry_dsn = ""  # 可选，配置后可以在 sentry 上收到异常报警
+xml_output_dir = "output"  # 生成 xml 文件的目录
+
+# 配置 topic 信息，每个topic有自己的配置信息
+[[topics]]
+name = "your-topic-name"  # 可选，仅仅是作为备注信息
+topic = "topic address"
+webhook = "https://your-webhook-url"  # 可选，不配置就不会调用 webhook
+# encryption_key, iv_prefix 用来解密链上数据；除非上链时没有加密，否则必填
+encryption_key = "xxx"
+iv_prefix = "yyy"
+
+# 配置另一个 topic
+[[topics]]
+name = "yet-another-topic-name"
+topic = "topic address"
+webhook = "https://your-webhook-url"
+encryption_key = "..."
+iv_prefix = "..."
+
+# 参考上面两个配置，可以配置更多 topic
+```
 
 #### build docker image
 
@@ -96,23 +127,13 @@ diesel migration run
 
 ### 同步链上数据
 
-从 `last_status table` 中获取上次同步到哪个 `block_num` 了，然后用它作为起点，继续往后同步。
+从 `last_status table` 中获取上次某个 `topic` 同步到哪个 `block_num` 了，然后用它作为起点，继续往后同步。
 
 ```
 cargo run syncserver
 ```
 
-从指定的 `block_num` 作为起点，继续往后同步。
-
-```
-cargo run syncserver <block_num>
-```
-
-比如，从 `block_num = 22270` 开始同步：
-
-```
-cargo run syncserver 22270
-```
+注：默认从该 `topic` 的起始 `block number` 开始往后同步
 
 ### 启动 web server
 
@@ -124,6 +145,7 @@ cargo run web
 
 参数：
 
+- topic
 - blocknum 或 timestamp，作为起始点
 - type, 比如：`PIP:2001`
 - count，一次返回多少条数据

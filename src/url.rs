@@ -1,6 +1,6 @@
+use super::SETTINGS;
 use anyhow::Result;
 use rand::{thread_rng, Rng};
-use std::env;
 
 pub struct URL {
     urls: Vec<String>,
@@ -8,9 +8,7 @@ pub struct URL {
 
 impl URL {
     pub fn new() -> URL {
-        let url = env::var("PRS_BASE_URL").expect("get prs base url");
-
-        URL::from(&url)
+        URL::from(&SETTINGS.atom.prs_base_url)
     }
 
     pub fn from(url: &str) -> URL {
@@ -85,23 +83,6 @@ impl URL {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_new() {
-        let key = "PRS_BASE_URL";
-        let value = "https://prs-bp[1-2].press.one/api/chain";
-
-        env::set_var(key, value);
-        let url = URL::new();
-
-        assert_eq!(
-            url.get_all_urls(),
-            vec![
-                String::from("https://prs-bp1.press.one/api/chain"),
-                String::from("https://prs-bp2.press.one/api/chain"),
-            ]
-        );
-    }
 
     #[test]
     fn single_url() {

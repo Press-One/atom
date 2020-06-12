@@ -1,12 +1,9 @@
 extern crate chrono;
-extern crate dotenv;
 
 use chrono::prelude::Utc;
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool, PoolError, PooledConnection};
-use dotenv::dotenv;
-use std::env;
 use std::time::Duration;
 
 pub mod models;
@@ -19,6 +16,7 @@ use self::models::{NewNotify, Notify, NotifyPartial};
 use self::models::{NewPost, Post, PostJson, PostPartial};
 use self::models::{NewTrx, Trx};
 use self::models::{NewUser, User, UserList};
+use super::SETTINGS;
 
 pub type PgPool = Pool<ConnectionManager<PgConnection>>;
 pub type PgPooledConnection = PooledConnection<ConnectionManager<PgConnection>>;
@@ -34,9 +32,7 @@ fn init_pool(database_url: &str) -> Result<PgPool, PoolError> {
 }
 
 pub fn establish_connection_pool() -> PgPool {
-    dotenv().ok();
-    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    init_pool(&database_url).expect("create database pool failed")
+    init_pool(&SETTINGS.atom.db_url).expect("create database pool failed")
 }
 
 pub fn save_user<'a>(

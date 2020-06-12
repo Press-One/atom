@@ -2,9 +2,11 @@ version: '3.3'
 
 services:
   atom:
-    image: pressone/atom
+    image: ${ATOM_IMAGE}
     env_file:
       - .env
+    volumes:
+      - ./Settings.toml:/app/Settings.toml
     depends_on:
       - postgres
     command: sh -c "
@@ -14,9 +16,11 @@ services:
     restart: always
 
   web:
-    image: pressone/atom
+    image: ${ATOM_IMAGE}
     env_file:
       - .env
+    volumes:
+      - ./Settings.toml:/app/Settings.toml
     depends_on:
       - postgres
     command: sh -c "

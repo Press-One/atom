@@ -7,6 +7,8 @@ extern crate log;
 extern crate diesel;
 #[macro_use]
 extern crate serde_json;
+#[macro_use]
+extern crate lazy_static;
 
 extern crate impl2001_rs;
 extern crate prs_utility_rust;
@@ -15,7 +17,6 @@ extern crate sentry;
 
 use anyhow::Result;
 use diesel::pg::PgConnection;
-use dotenv::dotenv;
 use std::env;
 use std::thread;
 use std::time::Duration;
@@ -26,11 +27,16 @@ mod frontmatter;
 mod handlers;
 mod processor;
 mod prs;
+mod settings;
 mod url;
 mod util;
 
 use crate::impl2001_rs::pip::pip2001::Pip2001;
 use crate::impl2001_rs::pip::Pip;
+
+lazy_static! {
+    static ref SETTINGS: settings::Settings = settings::Settings::load().unwrap();
+}
 
 fn main() {
     env_logger::init();
@@ -55,11 +61,11 @@ fn main() {
 fn init_sentry() {
     // init sentry
     let _guard;
-    if let Ok(sentry_dsn) = env::var("SENTRY_DSN") {
-        _guard = sentry::init(sentry_dsn);
+    if let Some(sentry_dsn) = &SETTINGS.atom.sentry_dsn {
+        _guard = sentry::init(String::from(sentry_dsn));
         sentry::integrations::panic::register_panic_handler();
     } else {
-        debug!("can not get SENTRY_DSN environment variable, skip sentry integration");
+        debug!("can not get atom.sentry_dsn from toml config file, skip sentry integration");
     }
 }
 
@@ -80,8 +86,8 @@ fn run_fetch() {
 }
 
 fn run_syncserver() {
-    let topics = util::get_topics().unwrap();
-    for (topic, _) in topics {
+    for item in &SETTINGS.topics {
+        let topic = &item.topic;
         let _handle = thread::spawn(move || {
             let last_block_num_key = util::get_last_block_num_by_topic(&topic);
             let db_conn_pool = db::establish_connection_pool();
@@ -163,8 +169,7 @@ fn generate_atom() {
 fn run_web() {
     use actix_web::{middleware, web, App, HttpServer};
 
-    dotenv().ok();
-    let bind_address = env::var("BIND_ADDRESS").expect("BIND_ADDRESS must be set");
+    let bind_address = &SETTINGS.atom.bind_address;
 
     HttpServer::new(move || {
         App::new()

@@ -3,12 +3,9 @@ extern crate impl2001_rs;
 use anyhow::{anyhow, Result};
 use chrono::prelude::Utc;
 use diesel::pg::PgConnection;
-use std::env;
 use std::fs;
 use std::io::{sink, Write};
 use std::path::Path;
-
-use dotenv::dotenv;
 
 use crate::crypto_util;
 use crate::impl2001_rs::pip::pip2001::Pip2001;
@@ -17,11 +14,11 @@ use crate::impl2001_rs::pip::InputObject;
 use crate::prs_utility_rust::utility;
 use atom_syndication::{Feed, Generator, Person};
 
+use super::SETTINGS;
 use crate::db;
 use crate::db::models::{Post, PostPartial};
 use crate::frontmatter;
 use crate::prs;
-use crate::util;
 
 pub fn process_pip2001_message<'a>(
     conn: &PgConnection,
@@ -195,15 +192,26 @@ pub fn fetchcontent(connection: &PgConnection) {
                                         continue;
                                     }
                                 };
-                            html = match decrypt_aes_256_cbc(&enc_post.session, &enc_post.content) {
-                                Ok(v) => v,
-                                Err(e) => {
-                                    error!(
-                                        "decrypt enc post file_hash = {} failed: {:?}",
-                                        post.file_hash, e
-                                    );
-                                    continue;
+
+                            if let Some(topic_conf) = SETTINGS.get_topic(&post.topic) {
+                                html = match decrypt_aes_256_cbc(
+                                    &topic_conf.encryption_key,
+                                    &topic_conf.iv_prefix,
+                                    &enc_post.session,
+                                    &enc_post.content,
+                                ) {
+                                    Ok(v) => v,
+                                    Err(e) => {
+                                        error!(
+                                            "decrypt enc post file_hash = {} failed: {:?}",
+                                            post.file_hash, e
+                                        );
+                                        continue;
+                                    }
                                 }
+                            } else {
+                                error!("can not find topic = {} from toml config", &post.topic);
+                                continue;
                             }
                         } else {
                             html = data;
@@ -306,10 +314,12 @@ pub fn fetch_markdown(url: String) -> Result<String> {
     }
 }
 
-fn decrypt_aes_256_cbc(session: &str, content: &str) -> Result<String, String> {
-    dotenv().ok();
-    let encryption_key = env::var("ENCRYPTION_KEY").expect("ENCRYPTION_KEY must be set");
-    let iv_prefix = env::var("IV_PREFIX").expect("IV_PREFIX must be set");
+fn decrypt_aes_256_cbc(
+    encryption_key: &str,
+    iv_prefix: &str,
+    session: &str,
+    content: &str,
+) -> Result<String, String> {
     let hashiv = crypto_util::get_iv(&iv_prefix, session);
     let key = hex::decode(&encryption_key).expect(&format!(
         "hex::decode failed, encryption_key = {}",
@@ -319,20 +329,18 @@ fn decrypt_aes_256_cbc(session: &str, content: &str) -> Result<String, String> {
 }
 
 pub fn generate_atom_xml(connection: &PgConnection) -> Result<()> {
-    dotenv().ok();
-    let xml_output_dir = env::var("XML_OUTPUT_DIR").expect("XML_OUTPUT_DIR must be set");
+    let xml_output_dir = &SETTINGS.atom.xml_output_dir;
     fs::create_dir_all(&xml_output_dir).expect("create xml_output_dir failed");
 
-    let topics_map = util::get_topics()?;
-    for item in topics_map {
-        let topic = item.0;
+    for item in &SETTINGS.topics {
+        let topic = &item.topic;
         debug!("generate atom for topic = {}", topic);
-        let posts_result = db::get_allow_posts(&connection, &topic);
+        let posts_result = db::get_allow_posts(&connection, topic);
         match posts_result {
             Ok(posts) => {
                 let atomstring = atom(&connection, posts);
 
-                let fpath = Path::new(&xml_output_dir).join(&topic);
+                let fpath = Path::new(&xml_output_dir).join(topic);
                 let mut file = match fs::File::create(&fpath) {
                     Ok(file) => file,
                     Err(e) => {
@@ -425,10 +433,9 @@ pub fn check_and_send_webhook(conn: &PgConnection, data_id: &str) -> Result<()> 
                     trx_id: notify.trx_id,
                 },
             };
-            let topics_map = util::get_topics()?;
-            if let Some(notify_url) = topics_map.get(&notify.topic) {
+            if let Some(notify_url) = SETTINGS.get_webhook_by_topic(&notify.topic) {
                 debug!("send notify payload to {}", notify_url);
-                match prs::notify_webhook(&payload, notify_url) {
+                match prs::notify_webhook(&payload, &notify_url) {
                     Ok(status_code) => {
                         let success = status_code == 200;
                         db::update_notify_status(conn, &notify.data_id, success)?;
