@@ -7,7 +7,6 @@
 ##### .env
 
 ```
-.env
 RUST_LOG=info
 RUST_BACKTRACE=full
 ATOM_IMAGE=${your-atom-docker-image}
