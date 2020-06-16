@@ -415,10 +415,6 @@ pub fn check_and_send_webhook(conn: &PgConnection, data_id: &str) -> Result<()> 
     let notify_result = db::get_notify_by_data_id(conn, data_id);
     match notify_result {
         Ok(notify) => {
-            debug!(
-                "notify data_id = {} topic = {} success = {}",
-                notify.data_id, notify.topic, notify.success
-            );
             if notify.success {
                 debug!(
                     "block_num = {} trx_id = {} notify webhook success already, skip ...",
@@ -434,6 +430,10 @@ pub fn check_and_send_webhook(conn: &PgConnection, data_id: &str) -> Result<()> 
                 },
             };
             if let Some(notify_url) = SETTINGS.get_webhook_by_topic(&notify.topic) {
+                debug!(
+                    "notify data_id = {} topic = {} success = {}",
+                    notify.data_id, notify.topic, notify.success
+                );
                 debug!("send notify payload to {}", notify_url);
                 match prs::notify_webhook(&payload, &notify_url) {
                     Ok(status_code) => {
@@ -446,7 +446,10 @@ pub fn check_and_send_webhook(conn: &PgConnection, data_id: &str) -> Result<()> 
                     ),
                 }
             } else {
-                error!("can not find webhook url for topic = {}", notify.topic);
+                warn!(
+                    "can not find webhook url for topic = {}, skip ...",
+                    notify.topic
+                );
             }
         }
         Err(e) => error!("get notify by data_id = {} failed: {:?}", data_id, e),
