@@ -70,7 +70,10 @@ fn init_sentry() {
 }
 
 fn check_or_show_usage(args: &Vec<String>) {
-    let usage = format!("usage: {} <fetch|syncserver|processpost|atom>", &args[0]);
+    let usage = format!(
+        "usage: {} <fetch|syncserver|processpost|atom|web>",
+        &args[0]
+    );
     if args.len() <= 1 {
         println!("{}", usage);
         process::exit(0);

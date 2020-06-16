@@ -140,6 +140,22 @@ cargo run syncserver
 cargo run web
 ```
 
+### rest api
+
+params:
+
+- topic, topic 地址 (**必填**)
+- offset, 从 **零** 开始；默认是零
+- limit，每次返回多少条，**最大为100**；默认是`20`
+
+#### 获取某个 topic 的 posts
+
+> GET /json_posts?topic=${your-topic-id}
+
+#### 获取某 topic 的用户
+
+> GET /users?topic=${your-topic-id}
+
 ## 请求 transaction
 
 参数：
