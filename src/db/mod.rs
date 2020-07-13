@@ -421,13 +421,13 @@ pub fn save_notify(
     let new_notify = NewNotify {
         data_id,
         block_num,
-        trx_id: &trx_id.to_lowercase(),
+        trx_id,
         topic,
     };
 
     let notify = diesel::insert_into(notifies::table)
         .values(&new_notify)
-        .on_conflict(notifies::trx_id)
+        .on_conflict(notifies::data_id)
         .do_update()
         .set(&new_notify)
         .get_result(conn);
