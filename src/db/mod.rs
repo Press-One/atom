@@ -421,7 +421,7 @@ pub fn save_notify(
     let new_notify = NewNotify {
         data_id,
         block_num,
-        trx_id,
+        trx_id: &trx_id.to_lowercase(),
         topic,
     };
 
