@@ -275,30 +275,38 @@ pub fn fetch_transactions_by_topic(
                 Some(v) => v.to_string(),
             };
 
-            let action_data = data["block"]["transactions"][0]["trx"]["transaction"]["actions"][0]
-                ["data"]
-                .clone();
-            let adata: Pip2001ActionData = match serde_json::from_value(action_data.clone()) {
-                Ok(v) => v,
-                Err(e) => {
-                    error!("parse action data to Pip2001ActionData failed, action_data = {:?}, error = {}", &action_data, e);
-                    continue;
+            if let Value::Array(_transactions) = &data["block"]["transactions"] {
+                for _transaction in _transactions {
+                    if let Value::Array(_actions) = &_transaction["trx"]["transaction"]["actions"] {
+                        for _action in _actions {
+                            let action_data = _action["data"].clone();
+                            let adata: Pip2001ActionData = match serde_json::from_value(
+                                action_data.clone(),
+                            ) {
+                                Ok(v) => v,
+                                Err(e) => {
+                                    error!("parse action data to Pip2001ActionData failed, action_data = {:?}, error = {}", &action_data, e);
+                                    continue;
+                                }
+                            };
+
+                            let hash = adata.hash.clone();
+                            let signature = adata.signature.clone();
+
+                            let trx = Transaction {
+                                block_num,
+                                data_type: data_type.clone(),
+                                data: adata.clone(),
+                                trx_id: trx_id.clone(),
+                                hash,
+                                signature,
+                                user_address: user_address.clone(),
+                            };
+                            transactions.push(trx);
+                        }
+                    }
                 }
-            };
-
-            let hash = adata.hash.clone();
-            let signature = adata.signature.clone();
-
-            let trx = Transaction {
-                block_num,
-                data_type,
-                data: adata.clone(),
-                trx_id,
-                hash,
-                signature,
-                user_address,
-            };
-            transactions.push(trx);
+            }
         }
     };
 
