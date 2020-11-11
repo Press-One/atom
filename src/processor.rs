@@ -415,9 +415,9 @@ pub fn check_and_send_webhook(conn: &PgConnection, data_id: &str) -> Result<()> 
     let notify_result = db::get_notify_by_data_id(conn, data_id);
     match notify_result {
         Ok(notify) => {
-            if notify.success {
+            if notify.success || notify.retries >= 3 {
                 debug!(
-                    "block_num = {} trx_id = {} notify webhook success already, skip ...",
+                    "block_num = {} trx_id = {} notify webhook success or retries >= 3, skip ...",
                     notify.block_num, notify.trx_id
                 );
                 return Ok(());
